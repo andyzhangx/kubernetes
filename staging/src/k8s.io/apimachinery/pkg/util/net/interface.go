@@ -23,6 +23,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 
 	"strings"
 
@@ -283,6 +284,10 @@ func chooseIPFromHostInterfaces(nw networkInterfacer) (net.IP, error) {
 				// TODO: Decide if should open up to allow IPv6 LLAs in future.
 				if !ip.IsGlobalUnicast() {
 					glog.V(4).Infof("Skipping: non-global address %q on interface %q.", ip, intf.Name)
+					continue
+				}
+                                if runtime.GOOS == "windows" && intf.Name != "vEthernet (HNSTransparent)" && !strings.HasPrefix(intf.Name, "Ethernet") {
+					glog.V(4).Infof("Skipping: non-transparent address %q on interface %q.", ip, intf.Name)
 					continue
 				}
 				glog.V(4).Infof("Found global unicast address %q on interface %q.", ip, intf.Name)
