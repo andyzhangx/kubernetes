@@ -5,6 +5,7 @@ licenses(["notice"])
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
+    "go_test",
 )
 
 go_library(
@@ -12,11 +13,7 @@ go_library(
     srcs = [
         "attacher.go",
         "azure_dd.go",
-        "blobDiskController.go",
         "common.go",
-        "controllerCommon.go",
-        "diskMap.go",
-        "managedDiskController.go",
         "mounter.go",
         "provisioner.go",
     ],
@@ -54,4 +51,21 @@ filegroup(
     name = "all-srcs",
     srcs = [":package-srcs"],
     tags = ["automanaged"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "azure_dd_test.go",
+        "common_test.go",
+    ],
+    library = ":go_default_library",
+    tags = ["automanaged"],
+    deps = [
+        "//pkg/api/v1:go_default_library",
+        "//pkg/util/exec:go_default_library",
+        "//pkg/volume:go_default_library",
+        "//pkg/volume/testing:go_default_library",
+        "//vendor/k8s.io/client-go/util/testing:go_default_library",
+    ],
 )

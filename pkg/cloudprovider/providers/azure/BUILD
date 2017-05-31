@@ -31,6 +31,7 @@ go_library(
     deps = [
         "//pkg/api/v1/service:go_default_library",
         "//pkg/cloudprovider:go_default_library",
+        "//pkg/controller:go_default_library",
         "//pkg/version:go_default_library",
         "//vendor/github.com/Azure/azure-sdk-for-go/arm/compute:go_default_library",
         "//vendor/github.com/Azure/azure-sdk-for-go/arm/network:go_default_library",
@@ -59,7 +60,6 @@ go_test(
     tags = ["automanaged"],
     deps = [
         "//pkg/api/v1/service:go_default_library",
-        "//vendor/github.com/Azure/azure-sdk-for-go/arm/compute:go_default_library",
         "//vendor/github.com/Azure/azure-sdk-for-go/arm/network:go_default_library",
         "//vendor/github.com/Azure/go-autorest/autorest/to:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
