@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azure_dd
+package azure
 
 import (
 	"bytes"
@@ -34,11 +34,11 @@ type managedDiskController struct {
 	common *controllerCommon
 }
 
-func newManagedDiskController(common *controllerCommon) (ManagedDiskController, error) {
+func newManagedDiskController(common *controllerCommon) (*managedDiskController, error) {
 	return &managedDiskController{common: common}, nil
 }
 
-func (c *managedDiskController) AttachDisk(nodeName string, diskUri string, cacheMode string) (int, error) {
+func (c *managedDiskController) AttachManagedDisk(nodeName string, diskUri string, cacheMode string) (int, error) {
 	// We don't need to validate if the disk is already attached
 	// to a different VM. The VM update call below will fail if
 	// it was attached somewhere else
@@ -107,7 +107,7 @@ func (c *managedDiskController) AttachDisk(nodeName string, diskUri string, cach
 	return lun, err
 }
 
-func (c *managedDiskController) DetachDisk(nodeName string, hashedDiskId string) error {
+func (c *managedDiskController) DetachManagedDisk(nodeName string, hashedDiskId string) error {
 	diskId := ""
 	var vmData interface{}
 	vm, err := c.common.getArmVm(nodeName)
@@ -134,7 +134,7 @@ func (c *managedDiskController) DetachDisk(nodeName string, hashedDiskId string)
 		md := d["managedDisk"].(map[string]interface{})
 
 		currentDiskId := strings.ToLower(md["id"].(string))
-		hashedCurrentDiskId := makeCRC32(currentDiskId)
+		hashedCurrentDiskId := c.common.MakeCRC32(currentDiskId)
 
 		if hashedDiskId != hashedCurrentDiskId {
 			newDataDisks = append(newDataDisks, d)
@@ -172,7 +172,7 @@ func (c *managedDiskController) DetachDisk(nodeName string, hashedDiskId string)
 	// 2) disk status is not: unattached
 	err = kwait.ExponentialBackoff(defaultBackOff, func() (bool, error) {
 		// confirm that it is attached to the machine
-		attached, _, err := c.common.isDiskAttached(hashedDiskId, nodeName, true)
+		attached, _, err := c.common.IsDiskAttached(hashedDiskId, nodeName, true)
 		if err == nil && !attached {
 			// confirm that the disk status has changed
 			_, _, aState, err := c.getDisk(diskName)
@@ -196,7 +196,7 @@ func (c *managedDiskController) DetachDisk(nodeName string, hashedDiskId string)
 	return nil
 }
 
-func (c *managedDiskController) CreateDataDisk(diskName string, storageAccountType string, sizeGB int, tags map[string]string) (string, error) {
+func (c *managedDiskController) CreateManagedDisk(diskName string, storageAccountType string, sizeGB int, tags map[string]string) (string, error) {
 	glog.V(4).Infof("azureDisk - dreating new managed Name:%s StorageAccountType:%s Size:%v", diskName, storageAccountType, sizeGB)
 
 	if tags == nil {
@@ -269,7 +269,7 @@ func (c *managedDiskController) CreateDataDisk(diskName string, storageAccountTy
 	return diskId, nil
 }
 
-func (c *managedDiskController) DeleteDataDisk(diskUri string) error {
+func (c *managedDiskController) DeleteManagedDisk(diskUri string) error {
 	diskName := path.Base(diskUri)
 	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionId, c.common.resourceGroup, diskName, apiversion)
 

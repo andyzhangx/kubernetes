@@ -29,12 +29,29 @@ import (
 	"k8s.io/kubernetes/pkg/volume"
 )
 
-type azureDataDiskPlugin struct {
-	host volume.VolumeHost
+// interface exposed by the cloud provider implementing Disk functionlity
+type DiskController interface {
+	CreateBlobDisk(dataDiskName string, storageAccountType string, sizeGB int, forceStandAlone bool) (string, error)
+	DeleteBlobDisk(diskUri string, wasForced bool) error
 
-	commonController      *controllerCommon
-	blobDiskController    BlobDiskController
-	managedDiskController ManagedDiskController
+	AttachBlobDisk(nodeName string, diskUri string, cacheMode string) (int, error)
+	DetachBlobDisk(nodeName string, hashedDiskUri string) error
+
+	CreateManagedDisk(diskName string, storageAccountType string, sizeGB int, tags map[string]string) (string, error)
+	DeleteManagedDisk(diskUri string) error
+
+	AttachManagedDisk(nodeName string, diskUri string, cacheMode string) (int, error)
+	DetachManagedDisk(nodeName string, hashedDiskUri string) error
+
+	IsDiskAttached(hashedDiskUri, nodeName string, isManaged bool) (attached bool, lun int, err error)
+	GetAttachedDisks(nodeName string) ([]string, error)
+
+	MakeCRC32(str string) string
+}
+
+type azureDataDiskPlugin struct {
+	host           volume.VolumeHost
+	diskController DiskController
 }
 
 var _ volume.VolumePlugin = &azureDataDiskPlugin{}
@@ -59,39 +76,8 @@ func (plugin *azureDataDiskPlugin) Init(host volume.VolumeHost) error {
 		return fmt.Errorf("AzureDisk -  failed to get Azure Cloud Provider. GetCloudProvider returned %v instead", cloudProvider)
 	}
 
-	// Common controller contains the function
-	// needed by both blob disk and managed disk controllers
-
-	common := &controllerCommon{
-		aadResourceEndPoint: az.Environment.ServiceManagementEndpoint,
-		clientId:            az.AADClientID,
-		clientSecret:        az.AADClientSecret,
-		location:            az.Location,
-		managementEndpoint:  az.Environment.ResourceManagerEndpoint,
-		resourceGroup:       az.ResourceGroup,
-		tenantId:            az.TenantID,
-		tokenEndPoint:       az.Environment.ActiveDirectoryEndpoint,
-		subscriptionId:      az.SubscriptionID,
-	}
-
-	// BlobDiskController: contains the function needed to
-	// create/attach/detach/delete blob based (unmanaged disks)
-	blobController, err := newBlobDiskController(common)
-	if err != nil {
-		return fmt.Errorf("AzureDisk -  failed to init Blob Disk Controller with error (%s)", err.Error())
-	}
-
-	// ManagedDiskController: contains the functions needed to
-	// create/attach/detach/delete managed disks
-	managedController, err := newManagedDiskController(common)
-	if err != nil {
-		return fmt.Errorf("AzureDisk -  failed to init Managed  Disk Controller with error (%s)", err.Error())
-	}
-
+	plugin.diskController = az
 	plugin.host = host
-	plugin.blobDiskController = blobController
-	plugin.managedDiskController = managedController
-	plugin.commonController = common
 	return nil
 }
 
@@ -113,7 +99,7 @@ func (plugin *azureDataDiskPlugin) GetVolumeName(spec *volume.Spec) (string, err
 
 	isManaged := (*volumeSource.Kind == v1.AzureManagedDisk)
 	uniqueDiskNameTemplate := "%s%s"
-	hashedDiskUri := makeCRC32(strings.ToLower(volumeSource.DataDiskURI))
+	hashedDiskUri := plugin.diskController.MakeCRC32(strings.ToLower(volumeSource.DataDiskURI))
 
 	prefix := "b"
 	if isManaged {

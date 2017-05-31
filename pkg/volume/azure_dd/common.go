@@ -18,9 +18,7 @@ package azure_dd
 
 import (
 	"fmt"
-	"hash/crc32"
 	"io/ioutil"
-	"net/url"
 	"os"
 	"path"
 	"regexp"
@@ -32,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure"
 	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/util/strings"
@@ -63,14 +62,6 @@ var supportedDiskKinds = sets.NewString(
 )
 
 var supportedStorageAccountTypes = sets.NewString("premium_lrs", "standard_lrs")
-var polyTable *crc32.Table = crc32.MakeTable(crc32.Koopman)
-
-func makeCRC32(str string) string {
-	crc := crc32.New(polyTable)
-	crc.Write([]byte(str))
-	hash := crc.Sum32()
-	return strconv.FormatUint(uint64(hash), 10)
-}
 
 func getPath(uid types.UID, volName string, host volume.VolumeHost) string {
 	return host.GetPodVolumeDir(uid, strings.EscapeQualifiedNameForDisk(azureDataDiskPluginName), volName)
@@ -80,7 +71,8 @@ func getPath(uid types.UID, volName string, host volume.VolumeHost) string {
 func makeGlobalPDPath(host volume.VolumeHost, diskUri string, isManaged bool) (string, error) {
 	diskUri = STRINGS.ToLower(diskUri) // always lower uri because users may enter it in caps.
 	uniqueDiskNameTemplate := "%s%s"
-	hashedDiskUri := makeCRC32(diskUri)
+	az, _ := host.GetCloudProvider().(*azure.Cloud)
+	hashedDiskUri := az.MakeCRC32(diskUri)
 	prefix := "b"
 	if isManaged {
 		prefix = "m"
@@ -97,21 +89,6 @@ func diskKindHashfromPDName(diskName string) (bool, string) {
 	diskHash := diskName[1:]
 
 	return (diskKind == "m"), diskHash
-}
-
-func diskNameandSANameFromUri(diskUri string) (string, string, error) {
-	uri, err := url.Parse(diskUri)
-	if err != nil {
-		return "", "", err
-	}
-
-	hostName := uri.Host
-	storageAccountName := STRINGS.Split(hostName, ".")[0]
-
-	segments := STRINGS.Split(uri.Path, "/")
-	diskNameVhd := segments[len(segments)-1]
-
-	return storageAccountName, diskNameVhd, nil
 }
 
 func makeDataDisk(volumeName string, podUID types.UID, diskName string, host volume.VolumeHost) *dataDisk {

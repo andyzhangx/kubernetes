@@ -54,11 +54,11 @@ func (a *azureDiskAttacher) Attach(spec *volume.Spec, nodeName types.NodeName) (
 	}
 
 	diskName := volumeSource.DiskName
-	hashedDiskUri := makeCRC32(strings.ToLower(volumeSource.DataDiskURI))
+	hashedDiskUri := a.plugin.diskController.MakeCRC32(strings.ToLower(volumeSource.DataDiskURI))
 	glog.V(4).Infof("azureDisk - attempting to check if disk %s attached to node %s", diskName, nodeName)
 
 	isManagedDisk := (*volumeSource.Kind == v1.AzureManagedDisk)
-	attached, lun, err := a.plugin.commonController.isDiskAttached(hashedDiskUri, string(nodeName), isManagedDisk)
+	attached, lun, err := a.plugin.diskController.IsDiskAttached(hashedDiskUri, string(nodeName), isManagedDisk)
 
 	if err != nil {
 		glog.Infof("azureDisk - error checking if Azure Disk  (%s) is already attached to  node (%s). Will continue and try attach anyway. err:%v", diskName, nodeName, err)
@@ -76,9 +76,9 @@ func (a *azureDiskAttacher) Attach(spec *volume.Spec, nodeName types.NodeName) (
 	cachingMode := string(*volumeSource.CachingMode)
 	managed := (*volumeSource.Kind == v1.AzureManagedDisk)
 	if managed {
-		lun, err = a.plugin.managedDiskController.AttachDisk(string(nodeName), volumeSource.DataDiskURI, cachingMode)
+		lun, err = a.plugin.diskController.AttachManagedDisk(string(nodeName), volumeSource.DataDiskURI, cachingMode)
 	} else {
-		lun, err = a.plugin.blobDiskController.AttachDisk(string(nodeName), volumeSource.DataDiskURI, cachingMode)
+		lun, err = a.plugin.diskController.AttachBlobDisk(string(nodeName), volumeSource.DataDiskURI, cachingMode)
 	}
 
 	if err != nil {
@@ -90,7 +90,7 @@ func (a *azureDiskAttacher) Attach(spec *volume.Spec, nodeName types.NodeName) (
 }
 
 func (a *azureDiskAttacher) VolumesAreAttached(specs []*volume.Spec, nodeName types.NodeName) (map[*volume.Spec]bool, error) {
-	attachedDisks, err := a.plugin.commonController.getAttachedDisks(string(nodeName))
+	attachedDisks, err := a.plugin.diskController.GetAttachedDisks(string(nodeName))
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +212,7 @@ func (attacher *azureDiskAttacher) MountDevice(spec *volume.Spec, devicePath str
 func (d *azureDiskDetacher) Detach(deviceName string, nodeName types.NodeName) error {
 	isManagedDisk, diskHash := diskKindHashfromPDName(deviceName)
 
-	attached, _, err := d.plugin.commonController.isDiskAttached(diskHash, string(nodeName), isManagedDisk)
+	attached, _, err := d.plugin.diskController.IsDiskAttached(diskHash, string(nodeName), isManagedDisk)
 	if err != nil {
 		// Log error and continue with detach
 		glog.Warningf("azureDisk - error checking if Azure (%v) is already attached to current node (%v). Will continue and try detach anyway. err=%v", deviceName, nodeName, err)
@@ -225,12 +225,12 @@ func (d *azureDiskDetacher) Detach(deviceName string, nodeName types.NodeName) e
 	}
 
 	if isManagedDisk {
-		if err := d.plugin.managedDiskController.DetachDisk(string(nodeName), diskHash); err != nil {
+		if err := d.plugin.diskController.DetachManagedDisk(string(nodeName), diskHash); err != nil {
 			glog.Infof("azureDisk - error detaching  managed disk (%s) from node %q. error:%s", deviceName, nodeName, err.Error())
 			return err
 		}
 	} else {
-		if err := d.plugin.blobDiskController.DetachDisk(string(nodeName), diskHash); err != nil {
+		if err := d.plugin.diskController.DetachBlobDisk(string(nodeName), diskHash); err != nil {
 			glog.Infof("azureDisk -error detaching  blob  disk (%s) from node %q. error:%s", deviceName, nodeName, err.Error())
 			return err
 		}

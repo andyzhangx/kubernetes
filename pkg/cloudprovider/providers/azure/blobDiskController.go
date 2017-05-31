@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azure_dd
+package azure
 
 import (
 	"bytes"
@@ -24,6 +24,7 @@ import (
 	"io/ioutil"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 
@@ -59,7 +60,7 @@ var initFlag int64 = 0
 
 var accountsLock = &sync.Mutex{}
 
-func newBlobDiskController(common *controllerCommon) (BlobDiskController, error) {
+func newBlobDiskController(common *controllerCommon) (*blobDiskController, error) {
 	c := blobDiskController{common: common}
 	err := c.init()
 
@@ -71,7 +72,7 @@ func newBlobDiskController(common *controllerCommon) (BlobDiskController, error)
 }
 
 // attaches a disk to node and return lun # as string
-func (c *blobDiskController) AttachDisk(nodeName string, diskUri string, cacheMode string) (int, error) {
+func (c *blobDiskController) AttachBlobDisk(nodeName string, diskUri string, cacheMode string) (int, error) {
 	// K8s in case of existing pods evication, will automatically attepmt to attach volumes
 	// to a different node. Though it *knows* which disk attached to which node.
 	// the following guards against this behaviour
@@ -157,7 +158,7 @@ func (c *blobDiskController) AttachDisk(nodeName string, diskUri string, cacheMo
 }
 
 // detaches disk from a node
-func (c *blobDiskController) DetachDisk(nodeName string, hashedDiskUri string) error {
+func (c *blobDiskController) DetachBlobDisk(nodeName string, hashedDiskUri string) error {
 	diskUri := ""
 	var vmData interface{}
 	vm, err := c.common.getArmVm(nodeName)
@@ -184,7 +185,7 @@ func (c *blobDiskController) DetachDisk(nodeName string, hashedDiskUri string) e
 		d := v.(map[string]interface{})
 		vhdInfo := d["vhd"].(map[string]interface{})
 		vhdUri := vhdInfo["uri"].(string)
-		hashedVhdUri := makeCRC32(vhdUri)
+		hashedVhdUri := c.common.MakeCRC32(vhdUri)
 		if hashedDiskUri != hashedVhdUri {
 			dataDisks = append(dataDisks, v)
 		} else {
@@ -212,7 +213,7 @@ func (c *blobDiskController) DetachDisk(nodeName string, hashedDiskUri string) e
 
 	// Wait for ARM to remove the disk from datadisks collection on the VM
 	err = kwait.ExponentialBackoff(defaultBackOff, func() (bool, error) {
-		attached, _, err := c.common.isDiskAttached(hashedDiskUri, nodeName, false)
+		attached, _, err := c.common.IsDiskAttached(hashedDiskUri, nodeName, false)
 		if err == nil && !attached {
 			return true, nil
 		}
@@ -248,7 +249,7 @@ func (c *blobDiskController) DetachDisk(nodeName string, hashedDiskUri string) e
 	return nil
 }
 
-func (c *blobDiskController) CreateDataDisk(dataDiskName string, storageAccountType string, sizeGB int, forceStandAlone bool) (string, error) {
+func (c *blobDiskController) CreateBlobDisk(dataDiskName string, storageAccountType string, sizeGB int, forceStandAlone bool) (string, error) {
 	glog.V(4).Infof("azureDisk - creating blob data disk named:%s on StorageAccountType:%s StandAlone:%v", dataDiskName, storageAccountType, forceStandAlone)
 
 	var storageAccountName = ""
@@ -259,7 +260,7 @@ func (c *blobDiskController) CreateDataDisk(dataDiskName string, storageAccountT
 
 	if forceStandAlone {
 		// we have to wait until the storage account is is created
-		storageAccountName = "p" + makeCRC32(c.common.subscriptionId+c.common.resourceGroup+dataDiskName)
+		storageAccountName = "p" + c.common.MakeCRC32(c.common.subscriptionId+c.common.resourceGroup+dataDiskName)
 		err = c.createStorageAccount(storageAccountName, storageAccountType, false)
 		if err != nil {
 			return "", err
@@ -311,7 +312,7 @@ func (c *blobDiskController) CreateDataDisk(dataDiskName string, storageAccountT
 	return fmt.Sprintf(vhdBlobUriTemplate, storageAccountName, defaultContainerName, vhdName), nil
 }
 
-func (c *blobDiskController) DeleteDataDisk(diskUri string, wasForced bool) error {
+func (c *blobDiskController) DeleteBlobDisk(diskUri string, wasForced bool) error {
 	storageAccountName, vhdName, err := diskNameandSANameFromUri(diskUri)
 	if err != nil {
 		return err
@@ -431,7 +432,7 @@ func (c *blobDiskController) init() error {
 //Sets unique strings to be used as accountnames && || blob containers names
 func (c *blobDiskController) setUniqueStrings() {
 	uniqueString := c.common.resourceGroup + c.common.location + c.common.subscriptionId
-	hash := makeCRC32(uniqueString)
+	hash := c.common.MakeCRC32(uniqueString)
 	//used to generate a unqie container name used by this cluster PVC
 	defaultContainerName = hash
 
@@ -975,9 +976,7 @@ func (c *blobDiskController) getStorageAccount(storageAccountName string) (bool,
 
 func (c *blobDiskController) addAccountState(key string, state *storageAccountState) {
 	accountsLock.Lock()
-	defer func() {
-		accountsLock.Unlock()
-	}()
+	defer accountsLock.Unlock()
 
 	if _, ok := c.accounts[key]; !ok {
 		c.accounts[key] = state
@@ -986,9 +985,7 @@ func (c *blobDiskController) addAccountState(key string, state *storageAccountSt
 
 func (c *blobDiskController) removeAccountState(key string) {
 	accountsLock.Lock()
-	defer func() {
-		accountsLock.Unlock()
-	}()
+	defer accountsLock.Unlock()
 	delete(c.accounts, key)
 }
 
@@ -1021,4 +1018,19 @@ func createVHDHeader(size uint64) ([]byte, error) {
 		return nil, err
 	}
 	return b.Bytes(), nil
+}
+
+func diskNameandSANameFromUri(diskUri string) (string, string, error) {
+	uri, err := url.Parse(diskUri)
+	if err != nil {
+		return "", "", err
+	}
+
+	hostName := uri.Host
+	storageAccountName := strings.Split(hostName, ".")[0]
+
+	segments := strings.Split(uri.Path, "/")
+	diskNameVhd := segments[len(segments)-1]
+
+	return storageAccountName, diskNameVhd, nil
 }

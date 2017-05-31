@@ -14,12 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package azure_dd
+package azure
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -48,23 +49,6 @@ type armVmDataDisk struct {
 	Vhd          *armVmVhdDiskInfo     `json:"vhd,omitempty"`
 	Caching      string                `json:"caching"`
 	DiskSizeGB   int                   `json:"diskSizeGB,omitempty"`
-}
-
-// interfaces used by attacher, deleter to communicate with ARM
-type BlobDiskController interface {
-	CreateDataDisk(dataDiskName string, storageAccountType string, sizeGB int, forceStandAlone bool) (string, error)
-	DeleteDataDisk(diskUri string, wasForced bool) error
-
-	AttachDisk(nodeName string, diskUri string, cacheMode string) (int, error)
-	DetachDisk(nodeName string, hashedDiskUri string) error
-}
-
-type ManagedDiskController interface {
-	CreateDataDisk(diskName string, storageAccountType string, sizeGB int, tags map[string]string) (string, error)
-	DeleteDataDisk(diskUri string) error
-
-	AttachDisk(nodeName string, diskUri string, cacheMode string) (int, error)
-	DetachDisk(nodeName string, hashedDiskUri string) error
 }
 
 const (
@@ -96,6 +80,7 @@ var defaultBackOff = kwait.Backoff{
 }
 
 var time1970 time.Time = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
+var polyTable *crc32.Table = crc32.MakeTable(crc32.Koopman)
 
 type controllerCommon struct {
 	tenantId            string
@@ -111,6 +96,13 @@ type controllerCommon struct {
 	expires_on          time.Time
 }
 
+func (c *controllerCommon) MakeCRC32(str string) string {
+	crc := crc32.New(polyTable)
+	crc.Write([]byte(str))
+	hash := crc.Sum32()
+	return strconv.FormatUint(uint64(hash), 10)
+}
+
 func (c *controllerCommon) isManagedArmVm(storageProfile map[string]interface{}) bool {
 	osDisk := storageProfile["osDisk"].(map[string]interface{})
 	if _, ok := osDisk["managedDisk"]; ok {
@@ -119,7 +111,7 @@ func (c *controllerCommon) isManagedArmVm(storageProfile map[string]interface{})
 	return false
 }
 
-func (c *controllerCommon) getAttachedDisks(nodeName string) ([]string, error) {
+func (c *controllerCommon) GetAttachedDisks(nodeName string) ([]string, error) {
 	var disks []string
 	var vmData interface{}
 	vm, err := c.getArmVm(nodeName)
@@ -157,7 +149,7 @@ func (c *controllerCommon) getAttachedDisks(nodeName string) ([]string, error) {
 }
 
 // if disk attached returns bool + lun attached to
-func (c *controllerCommon) isDiskAttached(hashedDiskUri, nodeName string, isManaged bool) (attached bool, lun int, err error) {
+func (c *controllerCommon) IsDiskAttached(hashedDiskUri, nodeName string, isManaged bool) (attached bool, lun int, err error) {
 	attached = false
 	lun = -1
 
@@ -183,7 +175,7 @@ func (c *controllerCommon) isDiskAttached(hashedDiskUri, nodeName string, isMana
 		if isManaged {
 			md := d["managedDisk"].(map[string]interface{})
 			currentDiskId := strings.ToLower(md["id"].(string))
-			hashedCurrentDiskId := makeCRC32(currentDiskId)
+			hashedCurrentDiskId := c.MakeCRC32(currentDiskId)
 			if hashedCurrentDiskId == hashedDiskUri {
 				attached = true
 				lun = int(d["lun"].(float64))
@@ -192,7 +184,7 @@ func (c *controllerCommon) isDiskAttached(hashedDiskUri, nodeName string, isMana
 		} else {
 			blobDisk := d["vhd"].(map[string]interface{})
 			blobDiskUri := blobDisk["uri"].(string)
-			hashedBlobDiskUri := makeCRC32(blobDiskUri)
+			hashedBlobDiskUri := c.MakeCRC32(blobDiskUri)
 			if hashedBlobDiskUri == hashedDiskUri {
 				attached = true
 				lun = int(d["lun"].(float64))

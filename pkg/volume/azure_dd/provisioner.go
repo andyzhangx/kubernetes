@@ -54,10 +54,10 @@ func (d *azureDiskDeleter) Delete() error {
 	managed := (*volumeSource.Kind == v1.AzureManagedDisk)
 
 	if managed {
-		return d.plugin.managedDiskController.DeleteDataDisk(volumeSource.DataDiskURI)
+		return d.plugin.diskController.DeleteManagedDisk(volumeSource.DataDiskURI)
 	}
 
-	return d.plugin.blobDiskController.DeleteDataDisk(volumeSource.DataDiskURI, wasStandAlone)
+	return d.plugin.diskController.DeleteBlobDisk(volumeSource.DataDiskURI, wasStandAlone)
 }
 
 func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
@@ -134,12 +134,12 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 	forceStandAlone := (kind != v1.AzureSharedBlobDisk)
 	diskUri := ""
 	if managed {
-		diskUri, err = p.plugin.managedDiskController.CreateDataDisk(name, storageAccountType, requestGB, *(p.options.CloudTags))
+		diskUri, err = p.plugin.diskController.CreateManagedDisk(name, storageAccountType, requestGB, *(p.options.CloudTags))
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		diskUri, err = p.plugin.blobDiskController.CreateDataDisk(name, storageAccountType, requestGB, forceStandAlone)
+		diskUri, err = p.plugin.diskController.CreateBlobDisk(name, storageAccountType, requestGB, forceStandAlone)
 		if err != nil {
 			return nil, err
 		}

@@ -108,7 +108,6 @@ type Config struct {
 
 // Cloud holds the config and clients
 type Cloud struct {
-	Config
 	Environment              azure.Environment
 	RoutesClient             network.RoutesClient
 	SubnetsClient            network.SubnetsClient
@@ -121,6 +120,10 @@ type Cloud struct {
 	StorageAccountClient     storage.AccountsClient
 	operationPollRateLimiter flowcontrol.RateLimiter
 	resourceRequestBackoff   wait.Backoff
+
+	*blobDiskController
+	*managedDiskController
+	*controllerCommon
 }
 
 func init() {
@@ -301,6 +304,9 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 			az.CloudProviderBackoffJitter)
 	}
 
+	if err := initDiskControllers(&az); err != nil {
+		return nil, err
+	}
 	return &az, nil
 }
 
@@ -349,4 +355,41 @@ func (az *Cloud) ProviderName() string {
 func configureUserAgent(client *autorest.Client) {
 	k8sVersion := version.Get().GitVersion
 	client.UserAgent = fmt.Sprintf("%s; kubernetes-cloudprovider/%s", client.UserAgent, k8sVersion)
+}
+
+func initDiskControllers(az *Cloud) error {
+	// Common controller contains the function
+	// needed by both blob disk and managed disk controllers
+
+	common := &controllerCommon{
+		aadResourceEndPoint: az.Environment.ServiceManagementEndpoint,
+		clientId:            az.AADClientID,
+		clientSecret:        az.AADClientSecret,
+		location:            az.Location,
+		managementEndpoint:  az.Environment.ResourceManagerEndpoint,
+		resourceGroup:       az.ResourceGroup,
+		tenantId:            az.TenantID,
+		tokenEndPoint:       az.Environment.ActiveDirectoryEndpoint,
+		subscriptionId:      az.SubscriptionID,
+	}
+
+	// BlobDiskController: contains the function needed to
+	// create/attach/detach/delete blob based (unmanaged disks)
+	blobController, err := newBlobDiskController(common)
+	if err != nil {
+		return fmt.Errorf("AzureDisk -  failed to init Blob Disk Controller with error (%s)", err.Error())
+	}
+
+	// ManagedDiskController: contains the functions needed to
+	// create/attach/detach/delete managed disks
+	managedController, err := newManagedDiskController(common)
+	if err != nil {
+		return fmt.Errorf("AzureDisk -  failed to init Managed  Disk Controller with error (%s)", err.Error())
+	}
+
+	az.blobDiskController = blobController
+	az.managedDiskController = managedController
+	az.controllerCommon = common
+
+	return nil
 }
