@@ -23,6 +23,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/volume"
+	"k8s.io/kubernetes/pkg/volume/util"
 )
 
 type azureDiskMounter struct {
@@ -44,6 +45,7 @@ func (m *azureDiskMounter) GetAttributes() volume.Attributes {
 	volumeSource, _ := getVolumeSource(m.spec)
 	return volume.Attributes{
 		ReadOnly:        *volumeSource.ReadOnly,
+		Managed:         !*volumeSource.ReadOnly,
 		SupportsSELinux: true,
 	}
 }
@@ -131,8 +133,6 @@ func (m *azureDiskMounter) SetUpAt(dir string, fsGroup *int64) error {
 		return mountErr
 	}
 
-	// we didn't fail
-	//TODO: do we need to do this? the bind-mount performs ro mount
 	if !*volumeSource.ReadOnly {
 		volume.SetVolumeOwnership(m, fsGroup)
 	}
@@ -146,8 +146,14 @@ func (u *azureDiskUnmounter) TearDown() error {
 }
 
 func (u *azureDiskUnmounter) TearDownAt(dir string) error {
-	glog.V(4).Infof("azureDisk - TearDownAt: %s", dir)
+	if pathExists, pathErr := util.PathExists(dir); pathErr != nil {
+		return fmt.Errorf("Error checking if path exists: %v", pathErr)
+	} else if !pathExists {
+		glog.Warningf("Warning: Unmount skipped because path does not exist: %v", dir)
+		return nil
+	}
 
+	glog.V(4).Infof("azureDisk - TearDownAt: %s", dir)
 	mounter := u.plugin.host.GetMounter()
 	mountPoint, err := mounter.IsLikelyNotMountPoint(dir)
 	if err != nil {

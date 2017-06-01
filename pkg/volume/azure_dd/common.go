@@ -49,19 +49,19 @@ type dataDisk struct {
 	podUID     types.UID
 }
 
-var supportedCachingModes = sets.NewString(
-	string(api.AzureDataDiskCachingNone),
-	string(api.AzureDataDiskCachingReadOnly),
-	string(api.AzureDataDiskCachingReadWrite),
-)
+var (
+	supportedCachingModes = sets.NewString(
+		string(api.AzureDataDiskCachingNone),
+		string(api.AzureDataDiskCachingReadOnly),
+		string(api.AzureDataDiskCachingReadWrite))
 
-var supportedDiskKinds = sets.NewString(
-	string(api.AzureSharedBlobDisk),
-	string(api.AzureDedicatedBlobDisk),
-	string(api.AzureManagedDisk),
-)
+	supportedDiskKinds = sets.NewString(
+		string(api.AzureSharedBlobDisk),
+		string(api.AzureDedicatedBlobDisk),
+		string(api.AzureManagedDisk))
 
-var supportedStorageAccountTypes = sets.NewString("premium_lrs", "standard_lrs")
+	supportedStorageAccountTypes = sets.NewString("premium_lrs", "standard_lrs")
+)
 
 func getPath(uid types.UID, volName string, host volume.VolumeHost) string {
 	return host.GetPodVolumeDir(uid, strings.EscapeQualifiedNameForDisk(azureDataDiskPluginName), volName)
