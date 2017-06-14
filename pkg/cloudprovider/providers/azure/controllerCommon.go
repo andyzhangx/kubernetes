@@ -53,15 +53,12 @@ type armVmDataDisk struct {
 
 const (
 	aadTokenEndPointPath string = "%s/oauth2/token/"
-	apiversion           string = "2016-04-30-preview"
-	//_apiversionVhdVm      string = "2016-03-30"
+	apiversion           string = "2016-03-30"
 	diskEndPointTemplate string = "%ssubscriptions/%s/resourcegroups/%s/providers/microsoft.compute/disks/%s?api-version=%s"
 	vMEndPointTemplate   string = "%ssubscriptions/%s/resourcegroups/%s/providers/microsoft.compute/virtualmachines/%s?api-version=%s"
 	diskIdTemplate       string = "/subscriptions/%s/resourcegroups/%s/providers/microsoft.compute/disks/%s"
 	defaultDataDiskCount int    = 16 // which will allow you to work with most medium size VMs (if not found in map)
 
-	vhdBlobUriTemplate             = "https://%s.blob.core.windows.net/%s/%s"
-	storageAccountUriTemplate      = "https://%s.blob.core.windows.net/%s?%s"
 	storageAccountNameTemplate     = "pvc%s"
 	storageAccountEndPointTemplate = "%ssubscriptions/%s/resourcegroups/%s/providers/microsoft.storage/storageaccounts/%s?api-version=2016-01-01"
 
@@ -83,17 +80,18 @@ var time1970 time.Time = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 var polyTable *crc32.Table = crc32.MakeTable(crc32.Koopman)
 
 type controllerCommon struct {
-	tenantId            string
-	subscriptionId      string
-	location            string
-	resourceGroup       string
-	clientId            string
-	clientSecret        string
-	managementEndpoint  string
-	tokenEndPoint       string
-	aadResourceEndPoint string
-	aadToken            string
-	expires_on          time.Time
+	tenantId              string
+	subscriptionId        string
+	location              string
+	storageEndpointSuffix string
+	resourceGroup         string
+	clientId              string
+	clientSecret          string
+	managementEndpoint    string
+	tokenEndPoint         string
+	aadResourceEndPoint   string
+	aadToken              string
+	expires_on            time.Time
 }
 
 func (c *controllerCommon) MakeCRC32(str string) string {

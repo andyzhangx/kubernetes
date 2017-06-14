@@ -309,7 +309,8 @@ func (c *BlobDiskController) CreateBlobDisk(dataDiskName string, storageAccountT
 		atomic.AddInt32(&c.accounts[storageAccountName].diskCount, 1)
 	}
 
-	return fmt.Sprintf(vhdBlobUriTemplate, storageAccountName, defaultContainerName, vhdName), nil
+	host := fmt.Sprintf("https://%s.blob.%s", storageAccountName, c.common.storageEndpointSuffix)
+	return fmt.Sprintf("%s/%s/%s", host, defaultContainerName, vhdName), nil
 }
 
 func (c *BlobDiskController) DeleteBlobDisk(diskUri string, wasForced bool) error {
