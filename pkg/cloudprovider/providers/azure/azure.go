@@ -108,6 +108,7 @@ type Config struct {
 
 // Cloud holds the config and clients
 type Cloud struct {
+	Config
 	Environment              azure.Environment
 	RoutesClient             network.RoutesClient
 	SubnetsClient            network.SubnetsClient
@@ -121,8 +122,8 @@ type Cloud struct {
 	operationPollRateLimiter flowcontrol.RateLimiter
 	resourceRequestBackoff   wait.Backoff
 
-	*blobDiskController
-	*managedDiskController
+	*BlobDiskController
+	*ManagedDiskController
 	*controllerCommon
 }
 
@@ -387,8 +388,8 @@ func initDiskControllers(az *Cloud) error {
 		return fmt.Errorf("AzureDisk -  failed to init Managed  Disk Controller with error (%s)", err.Error())
 	}
 
-	az.blobDiskController = blobController
-	az.managedDiskController = managedController
+	az.BlobDiskController = blobController
+	az.ManagedDiskController = managedController
 	az.controllerCommon = common
 
 	return nil

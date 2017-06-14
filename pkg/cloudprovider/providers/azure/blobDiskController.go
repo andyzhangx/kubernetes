@@ -48,7 +48,7 @@ type storageAccountState struct {
 	defaultContainerCreated bool
 }
 
-type blobDiskController struct {
+type BlobDiskController struct {
 	common   *controllerCommon
 	accounts map[string]*storageAccountState
 }
@@ -60,8 +60,8 @@ var initFlag int64 = 0
 
 var accountsLock = &sync.Mutex{}
 
-func newBlobDiskController(common *controllerCommon) (*blobDiskController, error) {
-	c := blobDiskController{common: common}
+func newBlobDiskController(common *controllerCommon) (*BlobDiskController, error) {
+	c := BlobDiskController{common: common}
 	err := c.init()
 
 	if err != nil {
@@ -72,7 +72,7 @@ func newBlobDiskController(common *controllerCommon) (*blobDiskController, error
 }
 
 // attaches a disk to node and return lun # as string
-func (c *blobDiskController) AttachBlobDisk(nodeName string, diskUri string, cacheMode string) (int, error) {
+func (c *BlobDiskController) AttachBlobDisk(nodeName string, diskUri string, cacheMode string) (int, error) {
 	// K8s in case of existing pods evication, will automatically attepmt to attach volumes
 	// to a different node. Though it *knows* which disk attached to which node.
 	// the following guards against this behaviour
@@ -158,7 +158,7 @@ func (c *blobDiskController) AttachBlobDisk(nodeName string, diskUri string, cac
 }
 
 // detaches disk from a node
-func (c *blobDiskController) DetachBlobDisk(nodeName string, hashedDiskUri string) error {
+func (c *BlobDiskController) DetachBlobDisk(nodeName string, hashedDiskUri string) error {
 	diskUri := ""
 	var vmData interface{}
 	vm, err := c.common.getArmVm(nodeName)
@@ -249,7 +249,7 @@ func (c *blobDiskController) DetachBlobDisk(nodeName string, hashedDiskUri strin
 	return nil
 }
 
-func (c *blobDiskController) CreateBlobDisk(dataDiskName string, storageAccountType string, sizeGB int, forceStandAlone bool) (string, error) {
+func (c *BlobDiskController) CreateBlobDisk(dataDiskName string, storageAccountType string, sizeGB int, forceStandAlone bool) (string, error) {
 	glog.V(4).Infof("azureDisk - creating blob data disk named:%s on StorageAccountType:%s StandAlone:%v", dataDiskName, storageAccountType, forceStandAlone)
 
 	var storageAccountName = ""
@@ -312,7 +312,7 @@ func (c *blobDiskController) CreateBlobDisk(dataDiskName string, storageAccountT
 	return fmt.Sprintf(vhdBlobUriTemplate, storageAccountName, defaultContainerName, vhdName), nil
 }
 
-func (c *blobDiskController) DeleteBlobDisk(diskUri string, wasForced bool) error {
+func (c *BlobDiskController) DeleteBlobDisk(diskUri string, wasForced bool) error {
 	storageAccountName, vhdName, err := diskNameandSANameFromUri(diskUri)
 	if err != nil {
 		return err
@@ -344,7 +344,7 @@ func (c *blobDiskController) DeleteBlobDisk(diskUri string, wasForced bool) erro
 	return err
 }
 
-func (c *blobDiskController) diskHasNoLease(diskUri string) (bool, error) {
+func (c *BlobDiskController) diskHasNoLease(diskUri string) (bool, error) {
 	if !strings.Contains(diskUri, defaultContainerName) {
 		// if the disk was attached via PV (with possibility of existing out side
 		// this RG), we will have to drop this check, as we are not sure if we can
@@ -377,7 +377,7 @@ func (c *blobDiskController) diskHasNoLease(diskUri string) (bool, error) {
 
 // Init tries best effort to ensure that 2 accounts standard/premium were craeted
 // to be used by shared blob disks. This to increase the speed pvc provisioning (in most of cases)
-func (c *blobDiskController) init() error {
+func (c *BlobDiskController) init() error {
 	if !c.shouldInit() {
 		return nil
 	}
@@ -412,14 +412,14 @@ func (c *blobDiskController) init() error {
 			go func(thisNext int) {
 				newAccountName := getAccountNameForNum(thisNext)
 
-				glog.Infof("azureDisk - blobDiskController init process  will create new storageAccount:%s type:%s", newAccountName, accountType)
+				glog.Infof("azureDisk - BlobDiskController init process  will create new storageAccount:%s type:%s", newAccountName, accountType)
 				err := c.createStorageAccount(newAccountName, accountType, true)
 				// TODO return created and error from
 				if err != nil {
-					glog.Infof("azureDisk - blobDiskController init: create account %s with error:%s", newAccountName, err.Error())
+					glog.Infof("azureDisk - BlobDiskController init: create account %s with error:%s", newAccountName, err.Error())
 
 				} else {
-					glog.Infof("azureDisk - blobDiskController init: created account %s", newAccountName)
+					glog.Infof("azureDisk - BlobDiskController init: created account %s", newAccountName)
 				}
 			}(counter)
 			counter = counter + 1
@@ -430,7 +430,7 @@ func (c *blobDiskController) init() error {
 }
 
 //Sets unique strings to be used as accountnames && || blob containers names
-func (c *blobDiskController) setUniqueStrings() {
+func (c *BlobDiskController) setUniqueStrings() {
 	uniqueString := c.common.resourceGroup + c.common.location + c.common.subscriptionId
 	hash := c.common.MakeCRC32(uniqueString)
 	//used to generate a unqie container name used by this cluster PVC
@@ -442,7 +442,7 @@ func (c *blobDiskController) setUniqueStrings() {
 	// Used as a template to create new names for relevant accounts
 	storageAccountNamePrefix = storageAccountNamePrefix + "%s"
 }
-func (c *blobDiskController) getStorageAccountKey(SAName string) (string, error) {
+func (c *BlobDiskController) getStorageAccountKey(SAName string) (string, error) {
 	if account, exists := c.accounts[SAName]; exists && account.key != "" {
 		return c.accounts[SAName].key, nil
 	}
@@ -507,7 +507,7 @@ func (c *blobDiskController) getStorageAccountKey(SAName string) (string, error)
 	return "", fmt.Errorf("couldn't find key named key1 in storage account:%s keys", SAName)
 }
 
-func (c *blobDiskController) getBlobSvcClient(SAName string) (azstorage.BlobStorageClient, error) {
+func (c *BlobDiskController) getBlobSvcClient(SAName string) (azstorage.BlobStorageClient, error) {
 	key := ""
 	var client azstorage.Client
 	var blobSvc azstorage.BlobStorageClient
@@ -524,7 +524,7 @@ func (c *blobDiskController) getBlobSvcClient(SAName string) (azstorage.BlobStor
 	return blobSvc, nil
 }
 
-func (c *blobDiskController) ensureDefaultContainer(storageAccountName string) error {
+func (c *BlobDiskController) ensureDefaultContainer(storageAccountName string) error {
 	var bExist bool
 	var provisionState string
 	var err error
@@ -610,7 +610,7 @@ func (c *blobDiskController) ensureDefaultContainer(storageAccountName string) e
 }
 
 // Gets Disk counts per storage account
-func (c *blobDiskController) getDiskCount(SAName string) (int, error) {
+func (c *BlobDiskController) getDiskCount(SAName string) (int, error) {
 	// if we have it in cache
 	if c.accounts[SAName].diskCount != -1 {
 		return int(c.accounts[SAName].diskCount), nil
@@ -641,7 +641,7 @@ func (c *blobDiskController) getDiskCount(SAName string) (int, error) {
 // shouldInit ensures that we only init the plugin once
 // and we only do that in the controller
 
-func (c *blobDiskController) shouldInit() bool {
+func (c *BlobDiskController) shouldInit() bool {
 	if os.Args[0] == "kube-controller-manager" || (os.Args[0] == "/hyperkube" && os.Args[1] == "controller-manager") {
 		swapped := atomic.CompareAndSwapInt64(&initFlag, 0, 1)
 		if swapped {
@@ -651,7 +651,7 @@ func (c *blobDiskController) shouldInit() bool {
 	return false
 }
 
-func (c *blobDiskController) getAllStorageAccounts() (map[string]*storageAccountState, error) {
+func (c *BlobDiskController) getAllStorageAccounts() (map[string]*storageAccountState, error) {
 	uri := fmt.Sprintf(storageAccountEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionId, c.common.resourceGroup, "")
 	client := &http.Client{}
 	r, err := http.NewRequest("GET", uri, nil)
@@ -717,7 +717,7 @@ func (c *blobDiskController) getAllStorageAccounts() (map[string]*storageAccount
 	return accounts, nil
 }
 
-func (c *blobDiskController) createStorageAccount(storageAccountName string, storageAccountType string, checkMaxAccounts bool) error {
+func (c *BlobDiskController) createStorageAccount(storageAccountName string, storageAccountType string, checkMaxAccounts bool) error {
 	bExist, _, _ := c.getStorageAccount(storageAccountName)
 	if bExist {
 		newAccountState := &storageAccountState{
@@ -795,7 +795,7 @@ func (c *blobDiskController) createStorageAccount(storageAccountName string, sto
 }
 
 // finds a new suitable storageAccount for this disk
-func (c *blobDiskController) findSANameForDisk(storageAccountType string) (string, error) {
+func (c *BlobDiskController) findSANameForDisk(storageAccountType string) (string, error) {
 	maxDiskCount := maxDisksPerStorageAccounts
 	SAName := ""
 	totalDiskCounts := 0
@@ -869,7 +869,7 @@ func (c *blobDiskController) findSANameForDisk(storageAccountType string) (strin
 	// we found a  storage accounts && [ avg are ok || we reached max sa count ]
 	return SAName, nil
 }
-func (c *blobDiskController) getNextAccountNum() int {
+func (c *BlobDiskController) getNextAccountNum() int {
 	max := 0
 
 	for k := range c.accounts {
@@ -886,7 +886,7 @@ func (c *blobDiskController) getNextAccountNum() int {
 	return max + 1
 }
 
-func (c *blobDiskController) deleteStorageAccount(storageAccountName string) error {
+func (c *BlobDiskController) deleteStorageAccount(storageAccountName string) error {
 	uri := fmt.Sprintf(storageAccountEndPointTemplate,
 		c.common.managementEndpoint,
 		c.common.subscriptionId,
@@ -920,7 +920,7 @@ func (c *blobDiskController) deleteStorageAccount(storageAccountName string) err
 }
 
 //Gets storage account exist, provisionStatus, Error if any
-func (c *blobDiskController) getStorageAccount(storageAccountName string) (bool, string, error) {
+func (c *BlobDiskController) getStorageAccount(storageAccountName string) (bool, string, error) {
 	// should be get or create storage accounts and should return keys (from cache)
 	uri := fmt.Sprintf(storageAccountEndPointTemplate,
 		c.common.managementEndpoint,
@@ -974,7 +974,7 @@ func (c *blobDiskController) getStorageAccount(storageAccountName string) (bool,
 	return true, provisionState, nil
 }
 
-func (c *blobDiskController) addAccountState(key string, state *storageAccountState) {
+func (c *BlobDiskController) addAccountState(key string, state *storageAccountState) {
 	accountsLock.Lock()
 	defer accountsLock.Unlock()
 
@@ -983,7 +983,7 @@ func (c *blobDiskController) addAccountState(key string, state *storageAccountSt
 	}
 }
 
-func (c *blobDiskController) removeAccountState(key string) {
+func (c *BlobDiskController) removeAccountState(key string) {
 	accountsLock.Lock()
 	defer accountsLock.Unlock()
 	delete(c.accounts, key)

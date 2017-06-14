@@ -30,15 +30,15 @@ import (
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 )
 
-type managedDiskController struct {
+type ManagedDiskController struct {
 	common *controllerCommon
 }
 
-func newManagedDiskController(common *controllerCommon) (*managedDiskController, error) {
-	return &managedDiskController{common: common}, nil
+func newManagedDiskController(common *controllerCommon) (*ManagedDiskController, error) {
+	return &ManagedDiskController{common: common}, nil
 }
 
-func (c *managedDiskController) AttachManagedDisk(nodeName string, diskUri string, cacheMode string) (int, error) {
+func (c *ManagedDiskController) AttachManagedDisk(nodeName string, diskUri string, cacheMode string) (int, error) {
 	// We don't need to validate if the disk is already attached
 	// to a different VM. The VM update call below will fail if
 	// it was attached somewhere else
@@ -107,7 +107,7 @@ func (c *managedDiskController) AttachManagedDisk(nodeName string, diskUri strin
 	return lun, err
 }
 
-func (c *managedDiskController) DetachManagedDisk(nodeName string, hashedDiskId string) error {
+func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskId string) error {
 	diskId := ""
 	var vmData interface{}
 	vm, err := c.common.getArmVm(nodeName)
@@ -196,7 +196,7 @@ func (c *managedDiskController) DetachManagedDisk(nodeName string, hashedDiskId 
 	return nil
 }
 
-func (c *managedDiskController) CreateManagedDisk(diskName string, storageAccountType string, sizeGB int, tags map[string]string) (string, error) {
+func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccountType string, sizeGB int, tags map[string]string) (string, error) {
 	glog.V(4).Infof("azureDisk - dreating new managed Name:%s StorageAccountType:%s Size:%v", diskName, storageAccountType, sizeGB)
 
 	if tags == nil {
@@ -269,7 +269,7 @@ func (c *managedDiskController) CreateManagedDisk(diskName string, storageAccoun
 	return diskId, nil
 }
 
-func (c *managedDiskController) DeleteManagedDisk(diskUri string) error {
+func (c *ManagedDiskController) DeleteManagedDisk(diskUri string) error {
 	diskName := path.Base(diskUri)
 	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionId, c.common.resourceGroup, diskName, apiversion)
 
@@ -301,7 +301,7 @@ func (c *managedDiskController) DeleteManagedDisk(diskUri string) error {
 	return nil
 }
 
-func (c *managedDiskController) getDisk(diskName string) (bool, string, string, error) {
+func (c *ManagedDiskController) getDisk(diskName string) (bool, string, string, error) {
 	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionId, c.common.resourceGroup, diskName, apiversion)
 
 	client := &http.Client{}
