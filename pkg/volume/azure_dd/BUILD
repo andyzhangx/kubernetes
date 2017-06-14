@@ -28,7 +28,6 @@ go_library(
         "//pkg/util/strings:go_default_library",
         "//pkg/volume:go_default_library",
         "//pkg/volume/util:go_default_library",
-        "//vendor/github.com/Azure/azure-sdk-for-go/storage:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
         "//vendor/github.com/rubiojr/go-vhd/vhd:go_default_library",
