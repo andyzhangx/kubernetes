@@ -47,6 +47,8 @@ func (ds *dockerService) updateCreateConfig(
 	podSandboxID string, securityOptSep rune, apiVersion *semver.Version) error {
 	if networkMode := os.Getenv("CONTAINER_NETWORK"); networkMode != "" {
 		createConfig.HostConfig.NetworkMode = dockercontainer.NetworkMode(networkMode)
+	} else {
+		modifyHostNetworkOptionForContainer(false, podSandboxID, createConfig.HostConfig)
 	}
 
 	return nil
@@ -71,22 +73,33 @@ func (ds *dockerService) determinePodIPBySandboxID(sandboxID string) string {
 		if err != nil {
 			continue
 		}
-		if containerIP := getContainerIP(r); containerIP != "" {
-			return containerIP
+
+		// On Windows, every container that is created in a Sandbox, needs to invoke CNI plugin again for adding the Network,
+		// with the shared container name as NetNS info,
+		// which is passed down the platform to replicate some necessary changes on to the new container
+		//
+		// This place is chosen as a hack for now, until we have a better place to do this,
+		// like immediately after ContainerCreation,
+		// Also this is very windows specific for now
+
+		// Using the CONTAINER_NETWORK flag to determine to choose old impl or current impl.
+		// CONTAINER_NETWORK is only kept for backward compatibility, since old OS version doens;t support
+		// Sandbox concept
+		if networkMode := os.Getenv("CONTAINER_NETWORK"); networkMode == "" {
+			// Do not return any IP, so that we would continue and get the IP of the Sandbox
+			ds.getIP(sandboxID, r)
+		} else {
+			if containerIP := getContainerIP(r); containerIP != "" {
+				return containerIP
+			}
 		}
 	}
 
 	return ""
 }
 
-// Configure Infra Networking post Container Creation, before the container starts
-func (ds *dockerService) configureInfraContainerNetworkConfig(containerID string) {
-	// Attach a second Nat network endpoint to the container to allow outbound internet traffic
-	netMode := os.Getenv("NAT_NETWORK")
-	if netMode == "" {
-		netMode = "nat"
-	}
-	ds.client.ConnectNetwork(netMode, containerID, nil)
+func getNetworkNamespace(c *dockertypes.ContainerJSON) (string, error) {
+	return string(c.HostConfig.NetworkMode), nil
 }
 
 func getContainerIP(container *dockertypes.ContainerJSON) string {
