@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	kwait "k8s.io/apimachinery/pkg/util/wait"
@@ -332,8 +333,12 @@ func getLunMapForVm(vmSize string) []bool {
 	return m
 }
 
+var mutex = &sync.Mutex{}
+
 // finds an empty based on VM size and current attached disks
 func findEmptyLun(vmSize string, dataDisks []interface{}) (int, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
 	vmLuns := getLunMapForVm(vmSize)
 	selectedLun := -1
 
