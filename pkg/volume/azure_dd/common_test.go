@@ -134,18 +134,18 @@ func TestIoHandler(t *testing.T) {
 }
 
 func TestPDNameExtract(t *testing.T) {
-	hashvalue := "abc"
+	pdName := "abc"
 	diskType := "b"
 	isManaged := false
 
-	var testname = fmt.Sprintf("%s%s", hashvalue, diskType)
-	expectedHashValue, expectedType := diskKindHashfromPDName(testname)
+	var testname = fmt.Sprintf("%s%s", diskType, pdName)
+	extractedManagedValue, extractedPdName := diskKindHashfromPDName(testname)
 
-	if expectedHashValue != hashvalue {
-		t.Errorf("PDName extract failed expected:%s got:%s", hashvalue, expectedHashValue)
+	if extractedManagedValue != isManaged {
+		t.Errorf("PDName extract failed expected:%s got:%s", isManaged, extractedManagedValue)
 	}
 
-	if expectedType != isManaged {
-		t.Errorf("PDName extract failed expected:%s got:%s", isManaged, expectedType)
+	if extractedPdName != pdName {
+		t.Errorf("PDName extract failed expected:%s got:%s", pdName, extractedPdName)
 	}
 }
