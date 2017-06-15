@@ -71,8 +71,7 @@ func getPath(uid types.UID, volName string, host volume.VolumeHost) string {
 func makeGlobalPDPath(host volume.VolumeHost, diskUri string, isManaged bool) (string, error) {
 	diskUri = STRINGS.ToLower(diskUri) // always lower uri because users may enter it in caps.
 	uniqueDiskNameTemplate := "%s%s"
-	az, _ := host.GetCloudProvider().(*azure.Cloud)
-	hashedDiskUri := az.MakeCRC32(diskUri)
+	hashedDiskUri := azure.MakeCRC32(diskUri)
 	prefix := "b"
 	if isManaged {
 		prefix = "m"
@@ -319,4 +318,14 @@ func diskLooksUnformatted(disk string) (bool, error) {
 	}
 	output := STRINGS.TrimSpace(string(dataOut))
 	return output == "", nil
+}
+
+func getDiskController(host volume.VolumeHost) (DiskController, error) {
+	cloudProvider := host.GetCloudProvider()
+	az, ok := cloudProvider.(*azure.Cloud)
+
+	if !ok || az == nil {
+		return nil, fmt.Errorf("AzureDisk -  failed to get Azure Cloud Provider. GetCloudProvider returned %v instead", cloudProvider)
+	}
+	return az, nil
 }

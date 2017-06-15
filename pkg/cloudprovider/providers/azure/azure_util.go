@@ -19,7 +19,9 @@ package azure
 import (
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"k8s.io/api/core/v1"
@@ -292,4 +294,12 @@ func splitProviderID(providerID string) (types.NodeName, error) {
 		return "", errors.New("error splitting providerID")
 	}
 	return types.NodeName(matches[1]), nil
+}
+
+// convert string to CRC32 format
+func MakeCRC32(str string) string {
+	crc := crc32.New(polyTable)
+	crc.Write([]byte(str))
+	hash := crc.Sum32()
+	return strconv.FormatUint(uint64(hash), 10)
 }

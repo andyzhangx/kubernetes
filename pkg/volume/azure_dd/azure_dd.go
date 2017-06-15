@@ -45,13 +45,10 @@ type DiskController interface {
 
 	IsDiskAttached(hashedDiskUri, nodeName string, isManaged bool) (attached bool, lun int, err error)
 	GetAttachedDisks(nodeName string) ([]string, error)
-
-	MakeCRC32(str string) string
 }
 
 type azureDataDiskPlugin struct {
-	host           volume.VolumeHost
-	diskController DiskController
+	host volume.VolumeHost
 }
 
 var _ volume.VolumePlugin = &azureDataDiskPlugin{}
@@ -69,14 +66,6 @@ func ProbeVolumePlugins() []volume.VolumePlugin {
 }
 
 func (plugin *azureDataDiskPlugin) Init(host volume.VolumeHost) error {
-	cloudProvider := host.GetCloudProvider()
-	az, ok := cloudProvider.(*azure.Cloud)
-
-	if !ok || az == nil {
-		return fmt.Errorf("AzureDisk -  failed to get Azure Cloud Provider. GetCloudProvider returned %v instead", cloudProvider)
-	}
-
-	plugin.diskController = az
 	plugin.host = host
 	return nil
 }
@@ -99,7 +88,7 @@ func (plugin *azureDataDiskPlugin) GetVolumeName(spec *volume.Spec) (string, err
 
 	isManaged := (*volumeSource.Kind == v1.AzureManagedDisk)
 	uniqueDiskNameTemplate := "%s%s"
-	hashedDiskUri := plugin.diskController.MakeCRC32(strings.ToLower(volumeSource.DataDiskURI))
+	hashedDiskUri := azure.MakeCRC32(strings.ToLower(volumeSource.DataDiskURI))
 
 	prefix := "b"
 	if isManaged {

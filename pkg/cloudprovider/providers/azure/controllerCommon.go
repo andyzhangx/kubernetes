@@ -94,13 +94,6 @@ type controllerCommon struct {
 	expires_on            time.Time
 }
 
-func (c *controllerCommon) MakeCRC32(str string) string {
-	crc := crc32.New(polyTable)
-	crc.Write([]byte(str))
-	hash := crc.Sum32()
-	return strconv.FormatUint(uint64(hash), 10)
-}
-
 func (c *controllerCommon) isManagedArmVm(storageProfile map[string]interface{}) bool {
 	osDisk := storageProfile["osDisk"].(map[string]interface{})
 	if _, ok := osDisk["managedDisk"]; ok {
@@ -173,7 +166,7 @@ func (c *controllerCommon) IsDiskAttached(hashedDiskUri, nodeName string, isMana
 		if isManaged {
 			md := d["managedDisk"].(map[string]interface{})
 			currentDiskId := strings.ToLower(md["id"].(string))
-			hashedCurrentDiskId := c.MakeCRC32(currentDiskId)
+			hashedCurrentDiskId := MakeCRC32(currentDiskId)
 			if hashedCurrentDiskId == hashedDiskUri {
 				attached = true
 				lun = int(d["lun"].(float64))
@@ -182,7 +175,7 @@ func (c *controllerCommon) IsDiskAttached(hashedDiskUri, nodeName string, isMana
 		} else {
 			blobDisk := d["vhd"].(map[string]interface{})
 			blobDiskUri := blobDisk["uri"].(string)
-			hashedBlobDiskUri := c.MakeCRC32(blobDiskUri)
+			hashedBlobDiskUri := MakeCRC32(blobDiskUri)
 			if hashedBlobDiskUri == hashedDiskUri {
 				attached = true
 				lun = int(d["lun"].(float64))

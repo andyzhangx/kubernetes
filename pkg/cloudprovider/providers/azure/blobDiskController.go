@@ -185,7 +185,7 @@ func (c *BlobDiskController) DetachBlobDisk(nodeName string, hashedDiskUri strin
 		d := v.(map[string]interface{})
 		vhdInfo := d["vhd"].(map[string]interface{})
 		vhdUri := vhdInfo["uri"].(string)
-		hashedVhdUri := c.common.MakeCRC32(vhdUri)
+		hashedVhdUri := MakeCRC32(vhdUri)
 		if hashedDiskUri != hashedVhdUri {
 			dataDisks = append(dataDisks, v)
 		} else {
@@ -260,7 +260,7 @@ func (c *BlobDiskController) CreateBlobDisk(dataDiskName string, storageAccountT
 
 	if forceStandAlone {
 		// we have to wait until the storage account is is created
-		storageAccountName = "p" + c.common.MakeCRC32(c.common.subscriptionId+c.common.resourceGroup+dataDiskName)
+		storageAccountName = "p" + MakeCRC32(c.common.subscriptionId+c.common.resourceGroup+dataDiskName)
 		err = c.createStorageAccount(storageAccountName, storageAccountType, false)
 		if err != nil {
 			return "", err
@@ -433,7 +433,7 @@ func (c *BlobDiskController) init() error {
 //Sets unique strings to be used as accountnames && || blob containers names
 func (c *BlobDiskController) setUniqueStrings() {
 	uniqueString := c.common.resourceGroup + c.common.location + c.common.subscriptionId
-	hash := c.common.MakeCRC32(uniqueString)
+	hash := MakeCRC32(uniqueString)
 	//used to generate a unqie container name used by this cluster PVC
 	defaultContainerName = hash
 

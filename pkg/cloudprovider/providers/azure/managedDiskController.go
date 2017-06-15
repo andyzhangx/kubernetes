@@ -134,7 +134,7 @@ func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskId 
 		md := d["managedDisk"].(map[string]interface{})
 
 		currentDiskId := strings.ToLower(md["id"].(string))
-		hashedCurrentDiskId := c.common.MakeCRC32(currentDiskId)
+		hashedCurrentDiskId := MakeCRC32(currentDiskId)
 
 		if hashedDiskId != hashedCurrentDiskId {
 			newDataDisks = append(newDataDisks, d)
