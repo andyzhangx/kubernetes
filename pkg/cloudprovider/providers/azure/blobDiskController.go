@@ -770,10 +770,11 @@ func (c *BlobDiskController) createStorageAccount(storageAccountName string, sto
 
 		resp, err := client.Do(r)
 
-		defer resp.Body.Close()
 		if err != nil || resp.StatusCode != 202 {
+			defer resp.Body.Close()
 			return getRestError(fmt.Sprintf("Create Storage Account: %s", storageAccountName), err, 200, resp.StatusCode, resp.Body)
 		}
+		defer resp.Body.Close()
 
 		newAccountState := &storageAccountState{
 			diskCount: -1,
@@ -948,9 +949,8 @@ func (c *BlobDiskController) getStorageAccount(storageAccountName string) (bool,
 
 	resp, err := client.Do(r)
 
-	defer resp.Body.Close()
-
 	if err != nil || resp.StatusCode != 200 {
+		defer resp.Body.Close()
 		if resp.StatusCode == 404 {
 			// we are ok the account does not exist
 			return false, "", nil
@@ -960,6 +960,7 @@ func (c *BlobDiskController) getStorageAccount(storageAccountName string) (bool,
 		glog.Infof("GetStorageAccount:%s failed with error %s", storageAccountName, err.Error())
 		return false, "", getRestError(fmt.Sprintf("GetStorageAccount: %s", storageAccountName), err, 200, resp.StatusCode, resp.Body)
 	}
+	defer resp.Body.Close()
 
 	// extract data
 

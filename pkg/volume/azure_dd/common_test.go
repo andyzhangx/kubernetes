@@ -142,7 +142,7 @@ func TestPDNameExtract(t *testing.T) {
 	extractedManagedValue, extractedPdName := diskKindHashfromPDName(testname)
 
 	if extractedManagedValue != isManaged {
-		t.Errorf("PDName extract failed expected:%s got:%s", isManaged, extractedManagedValue)
+		t.Errorf("PDName extract failed expected:%t got:%t", isManaged, extractedManagedValue)
 	}
 
 	if extractedPdName != pdName {

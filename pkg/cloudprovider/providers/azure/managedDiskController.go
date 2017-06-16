@@ -239,10 +239,11 @@ func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccoun
 
 	resp, err := client.Do(r)
 
-	defer resp.Body.Close()
 	if err != nil || resp.StatusCode != 202 {
+		defer resp.Body.Close()
 		return "", getRestError(fmt.Sprintf("Create Managed Disk: %s", diskName), err, 202, resp.StatusCode, resp.Body)
 	}
+	defer resp.Body.Close()
 
 	diskID := fmt.Sprintf(diskIDTemplate, c.common.subscriptionID, c.common.resourceGroup, diskName)
 
@@ -319,14 +320,15 @@ func (c *ManagedDiskController) getDisk(diskName string) (bool, string, string, 
 	r.Header.Add("Authorization", "Bearer "+token)
 
 	resp, err := client.Do(r)
-	defer resp.Body.Close()
 
 	if err != nil || resp.StatusCode != 200 {
+		defer resp.Body.Close()
 		newError := getRestError("Get Managed Disk", err, 200, resp.StatusCode, resp.Body)
 		// log the new formatted error and return the original error
 		glog.Infof(newError.Error())
 		return false, "", "", err
 	}
+	defer resp.Body.Close()
 
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
