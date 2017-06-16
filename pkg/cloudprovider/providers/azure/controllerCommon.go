@@ -54,7 +54,7 @@ type armVMDataDisk struct {
 
 const (
 	aadTokenEndPointPath string = "%s/oauth2/token/"
-	apiversion           string = "2016-03-30"
+	apiversion           string = "2016-04-30-preview"
 	diskEndPointTemplate string = "%ssubscriptions/%s/resourcegroups/%s/providers/microsoft.compute/disks/%s?api-version=%s"
 	vMEndPointTemplate   string = "%ssubscriptions/%s/resourcegroups/%s/providers/microsoft.compute/virtualmachines/%s?api-version=%s"
 	diskIDTemplate       string = "/subscriptions/%s/resourcegroups/%s/providers/microsoft.compute/disks/%s"
@@ -77,8 +77,8 @@ var defaultBackOff = kwait.Backoff{
 	Jitter:   0.0,
 }
 
-var time1970 time.Time
-var polyTable *crc32.Table
+var time1970 = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
+var polyTable = crc32.MakeTable(crc32.Koopman)
 
 type controllerCommon struct {
 	tenantID              string
