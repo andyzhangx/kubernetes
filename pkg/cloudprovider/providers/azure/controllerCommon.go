@@ -35,19 +35,19 @@ import (
 	"github.com/golang/glog"
 )
 
-type armVmVhdDiskInfo struct {
-	Uri string `json:"uri"`
+type armVMVhdDiskInfo struct {
+	URI string `json:"uri"`
 }
-type armVmManagedDiskInfo struct {
-	Id string `json:"id"`
+type armVMManagedDiskInfo struct {
+	ID string `json:"id"`
 }
 
-type armVmDataDisk struct {
+type armVMDataDisk struct {
 	Lun          int                   `json:"lun"`
 	Name         string                `json:"name,omitempty"`
 	CreateOption string                `json:"createOption"`
-	ManagedDisk  *armVmManagedDiskInfo `json:"managedDisk,omitempty"`
-	Vhd          *armVmVhdDiskInfo     `json:"vhd,omitempty"`
+	ManagedDisk  *armVMManagedDiskInfo `json:"managedDisk,omitempty"`
+	Vhd          *armVMVhdDiskInfo     `json:"vhd,omitempty"`
 	Caching      string                `json:"caching"`
 	DiskSizeGB   int                   `json:"diskSizeGB,omitempty"`
 }
@@ -57,7 +57,7 @@ const (
 	apiversion           string = "2016-03-30"
 	diskEndPointTemplate string = "%ssubscriptions/%s/resourcegroups/%s/providers/microsoft.compute/disks/%s?api-version=%s"
 	vMEndPointTemplate   string = "%ssubscriptions/%s/resourcegroups/%s/providers/microsoft.compute/virtualmachines/%s?api-version=%s"
-	diskIdTemplate       string = "/subscriptions/%s/resourcegroups/%s/providers/microsoft.compute/disks/%s"
+	diskIDTemplate       string = "/subscriptions/%s/resourcegroups/%s/providers/microsoft.compute/disks/%s"
 	defaultDataDiskCount int    = 16 // which will allow you to work with most medium size VMs (if not found in map)
 
 	storageAccountNameTemplate     = "pvc%s"
@@ -77,25 +77,25 @@ var defaultBackOff = kwait.Backoff{
 	Jitter:   0.0,
 }
 
-var time1970 time.Time = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
-var polyTable *crc32.Table = crc32.MakeTable(crc32.Koopman)
+var time1970 time.Time
+var polyTable *crc32.Table
 
 type controllerCommon struct {
-	tenantId              string
-	subscriptionId        string
+	tenantID              string
+	subscriptionID        string
 	location              string
 	storageEndpointSuffix string
 	resourceGroup         string
-	clientId              string
+	clientID              string
 	clientSecret          string
 	managementEndpoint    string
 	tokenEndPoint         string
 	aadResourceEndPoint   string
 	aadToken              string
-	expires_on            time.Time
+	expiresOn             time.Time
 }
 
-func (c *controllerCommon) isManagedArmVm(storageProfile map[string]interface{}) bool {
+func (c *controllerCommon) isManagedArmVM(storageProfile map[string]interface{}) bool {
 	osDisk := storageProfile["osDisk"].(map[string]interface{})
 	if _, ok := osDisk["managedDisk"]; ok {
 		return true
@@ -106,7 +106,7 @@ func (c *controllerCommon) isManagedArmVm(storageProfile map[string]interface{})
 func (c *controllerCommon) GetAttachedDisks(nodeName string) ([]string, error) {
 	var disks []string
 	var vmData interface{}
-	vm, err := c.getArmVm(nodeName)
+	vm, err := c.getArmVM(nodeName)
 
 	if err != nil {
 		return nil, err
@@ -128,26 +128,26 @@ func (c *controllerCommon) GetAttachedDisks(nodeName string) ([]string, error) {
 		if _, ok := d["vhd"]; ok {
 			// this is a blob disk
 			vhdInfo := d["vhd"].(map[string]interface{})
-			vhdUri := vhdInfo["uri"].(string)
-			disks = append(disks, vhdUri)
+			vhdURI := vhdInfo["uri"].(string)
+			disks = append(disks, vhdURI)
 		} else {
 			// this is managed disk
 			managedDiskInfo := d["managedDisk"].(map[string]interface{})
-			managedDiskId := managedDiskInfo["id"].(string)
-			disks = append(disks, managedDiskId)
+			managedDiskID := managedDiskInfo["id"].(string)
+			disks = append(disks, managedDiskID)
 		}
 	}
 	return disks, nil
 }
 
-// if disk attached returns bool + lun attached to
-func (c *controllerCommon) IsDiskAttached(hashedDiskUri, nodeName string, isManaged bool) (attached bool, lun int, err error) {
+//IsDiskAttached : if disk attached returns bool + lun attached to
+func (c *controllerCommon) IsDiskAttached(hashedDiskURI, nodeName string, isManaged bool) (attached bool, lun int, err error) {
 	attached = false
 	lun = -1
 
 	var vmData interface{}
 
-	vm, err := c.getArmVm(nodeName)
+	vm, err := c.getArmVM(nodeName)
 
 	if err != nil {
 		return attached, lun, err
@@ -166,18 +166,18 @@ func (c *controllerCommon) IsDiskAttached(hashedDiskUri, nodeName string, isMana
 		d := v.(map[string]interface{})
 		if isManaged {
 			md := d["managedDisk"].(map[string]interface{})
-			currentDiskId := strings.ToLower(md["id"].(string))
-			hashedCurrentDiskId := MakeCRC32(currentDiskId)
-			if hashedCurrentDiskId == hashedDiskUri {
+			currentDiskID := strings.ToLower(md["id"].(string))
+			hashedCurrentDiskID := MakeCRC32(currentDiskID)
+			if hashedCurrentDiskID == hashedDiskURI {
 				attached = true
 				lun = int(d["lun"].(float64))
 				break
 			}
 		} else {
 			blobDisk := d["vhd"].(map[string]interface{})
-			blobDiskUri := blobDisk["uri"].(string)
-			hashedBlobDiskUri := MakeCRC32(blobDiskUri)
-			if hashedBlobDiskUri == hashedDiskUri {
+			blobDiskURI := blobDisk["uri"].(string)
+			hashedBlobDiskURI := MakeCRC32(blobDiskURI)
+			if hashedBlobDiskURI == hashedDiskURI {
 				attached = true
 				lun = int(d["lun"].(float64))
 				break
@@ -189,8 +189,8 @@ func (c *controllerCommon) IsDiskAttached(hashedDiskUri, nodeName string, isMana
 }
 
 // Updates an arm VM based on the payload
-func (c *controllerCommon) updateArmVm(armVmName string, buffer *bytes.Buffer) error {
-	uri := fmt.Sprintf(vMEndPointTemplate, c.managementEndpoint, c.subscriptionId, c.resourceGroup, armVmName, apiversion)
+func (c *controllerCommon) updateArmVM(armVMName string, buffer *bytes.Buffer) error {
+	uri := fmt.Sprintf(vMEndPointTemplate, c.managementEndpoint, c.subscriptionID, c.resourceGroup, armVMName, apiversion)
 	client := &http.Client{}
 	r, err := http.NewRequest("PUT", uri, buffer)
 	if err != nil {
@@ -207,14 +207,14 @@ func (c *controllerCommon) updateArmVm(armVmName string, buffer *bytes.Buffer) e
 	resp, err := client.Do(r)
 
 	if err != nil || resp.StatusCode != 200 {
-		return getRestError(fmt.Sprintf("Update ARM VM: %s", armVmName), err, 200, resp.StatusCode, resp.Body)
+		return getRestError(fmt.Sprintf("Update ARM VM: %s", armVMName), err, 200, resp.StatusCode, resp.Body)
 	}
 	return nil
 }
 
 // Gets ARM VM
-func (c *controllerCommon) getArmVm(armVmName string) ([]byte, error) {
-	uri := fmt.Sprintf(vMEndPointTemplate, c.managementEndpoint, c.subscriptionId, c.resourceGroup, armVmName, apiversion)
+func (c *controllerCommon) getArmVM(armVMName string) ([]byte, error) {
+	uri := fmt.Sprintf(vMEndPointTemplate, c.managementEndpoint, c.subscriptionID, c.resourceGroup, armVMName, apiversion)
 	client := &http.Client{}
 	r, err := http.NewRequest("GET", uri, nil)
 	if err != nil {
@@ -234,7 +234,7 @@ func (c *controllerCommon) getArmVm(armVmName string) ([]byte, error) {
 
 	defer resp.Body.Close()
 	if err != nil || resp.StatusCode != 200 {
-		return nil, getRestError(fmt.Sprintf("Get ARM VM: %s", armVmName), err, 200, resp.StatusCode, resp.Body)
+		return nil, getRestError(fmt.Sprintf("Get ARM VM: %s", armVMName), err, 200, resp.StatusCode, resp.Body)
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
@@ -246,24 +246,24 @@ func (c *controllerCommon) getArmVm(armVmName string) ([]byte, error) {
 }
 
 func (c *controllerCommon) getToken() (token string, err error) {
-	if c.aadToken != "" && time.Now().UTC().Sub(c.expires_on).Seconds() <= 10 {
+	if c.aadToken != "" && time.Now().UTC().Sub(c.expiresOn).Seconds() <= 10 {
 		// token cached and is valid.
 		return c.aadToken, nil
 	}
 
-	apiUrl := c.tokenEndPoint
-	resource := fmt.Sprintf(aadTokenEndPointPath, c.tenantId)
+	apiURL := c.tokenEndPoint
+	resource := fmt.Sprintf(aadTokenEndPointPath, c.tenantID)
 	// create form urlencoded post data
 	formData := url.Values{}
 
 	formData.Add("grant_type", "client_credentials")
-	formData.Add("client_id", c.clientId)
+	formData.Add("client_id", c.clientID)
 	formData.Add("client_secret", c.clientSecret)
 	formData.Add("resource", c.aadResourceEndPoint)
 
 	urlStr := ""
 	u := &url.URL{}
-	if u, err = url.ParseRequestURI(apiUrl); err != nil {
+	if u, err = url.ParseRequestURI(apiURL); err != nil {
 		return "", err
 	}
 
@@ -290,7 +290,7 @@ func (c *controllerCommon) getToken() (token string, err error) {
 		return "", err
 	}
 
-	c.aadToken, c.expires_on, err = parseAADToken(payload)
+	c.aadToken, c.expiresOn, err = parseAADToken(payload)
 	return c.aadToken, err
 }
 
@@ -322,7 +322,7 @@ func parseAADToken(payload []byte) (string, time.Time, error) {
 }
 
 // Creats a slice  luns based on the VM size, used the static map declared on this package
-func getLunMapForVm(vmSize string) []bool {
+func getLunMapForVM(vmSize string) []bool {
 	count, ok := dataDisksPerVM[vmSize]
 	if !ok {
 		glog.Warningf("azureDisk - VM Size %s found no static lun count will use default which  %v", vmSize, defaultDataDiskCount)
@@ -339,7 +339,7 @@ var mutex = &sync.Mutex{}
 func findEmptyLun(vmSize string, dataDisks []interface{}) (int, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
-	vmLuns := getLunMapForVm(vmSize)
+	vmLuns := getLunMapForVM(vmSize)
 	selectedLun := -1
 
 	for _, v := range dataDisks {
@@ -375,5 +375,5 @@ func getRestError(operation string, restError error, expectedStatus int, actualS
 			bodystr = string(bodyBytes)
 		}
 	}
-	return fmt.Errorf("azureDisk - %s - Rest Status Error:\n Expected: %v\n Got: %v\n ResponseBody:%s\n\n", operation, expectedStatus, actualStatus, bodystr)
+	return fmt.Errorf("azureDisk - %s - Rest Status Error:\n Expected: %v\n Got: %v\n ResponseBody:%s", operation, expectedStatus, actualStatus, bodystr)
 }

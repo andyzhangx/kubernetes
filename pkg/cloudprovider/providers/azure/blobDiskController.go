@@ -48,15 +48,16 @@ type storageAccountState struct {
 	defaultContainerCreated bool
 }
 
+//BlobDiskController : blob disk controller struct
 type BlobDiskController struct {
 	common   *controllerCommon
 	accounts map[string]*storageAccountState
 }
 
 var defaultContainerName = ""
-var storageAccountNamePrefix string = ""
-var storageAccountNameMatch string = ""
-var initFlag int64 = 0
+var storageAccountNamePrefix = ""
+var storageAccountNameMatch = ""
+var initFlag int64
 
 var accountsLock = &sync.Mutex{}
 
@@ -71,8 +72,8 @@ func newBlobDiskController(common *controllerCommon) (*BlobDiskController, error
 	return &c, nil
 }
 
-// attaches a disk to node and return lun # as string
-func (c *BlobDiskController) AttachBlobDisk(nodeName string, diskUri string, cacheMode string) (int, error) {
+//AttachBlobDisk : attaches a disk to node and return lun # as string
+func (c *BlobDiskController) AttachBlobDisk(nodeName string, diskURI string, cacheMode string) (int, error) {
 	// K8s in case of existing pods evication, will automatically attepmt to attach volumes
 	// to a different node. Though it *knows* which disk attached to which node.
 	// the following guards against this behaviour
@@ -81,22 +82,22 @@ func (c *BlobDiskController) AttachBlobDisk(nodeName string, diskUri string, cac
 	// Azure in case of blob disks, does not maintain a list of vhd:attached-to:node
 	// The call  attach-to will fail after it was OK on the ARM VM endpoint
 	// possibly putting the entire VM in *failed* state
-	noLease, e := c.diskHasNoLease(diskUri)
+	noLease, e := c.diskHasNoLease(diskURI)
 	if e != nil {
 		return -1, e
 	}
 
 	if !noLease {
-		return -1, fmt.Errorf("azureDisk - disk %s still have leases on it. Will not be able to attach to node %s", diskUri, nodeName)
+		return -1, fmt.Errorf("azureDisk - disk %s still have leases on it. Will not be able to attach to node %s", diskURI, nodeName)
 	}
 
 	var vmData interface{}
-	_, diskName, err := diskNameandSANameFromUri(diskUri)
+	_, diskName, err := diskNameandSANameFromURI(diskURI)
 	if err != nil {
 		return -1, err
 	}
 
-	vm, err := c.common.getArmVm(nodeName)
+	vm, err := c.common.getArmVM(nodeName)
 	if err != nil {
 		return 0, err
 	}
@@ -115,8 +116,8 @@ func (c *BlobDiskController) AttachBlobDisk(nodeName string, diskUri string, cac
 	vmSize := hardwareProfile["vmSize"].(string)
 	storageProfile := props["storageProfile"].(map[string]interface{})
 
-	managedVm := c.common.isManagedArmVm(storageProfile)
-	if managedVm {
+	managedVM := c.common.isManagedArmVM(storageProfile)
+	if managedVM {
 		return -1, fmt.Errorf("azureDisk - error: attempt to attach blob disk %s to an managed node  %s ", diskName, nodeName)
 	}
 
@@ -127,12 +128,12 @@ func (c *BlobDiskController) AttachBlobDisk(nodeName string, diskUri string, cac
 		return -1, err
 	}
 
-	newDisk := &armVmDataDisk{
+	newDisk := &armVMDataDisk{
 		Name:         diskName,
 		Caching:      cacheMode,
 		CreateOption: "Attach",
 		//DiskSizeGB:   sizeGB,
-		Vhd: &armVmVhdDiskInfo{Uri: diskUri},
+		Vhd: &armVMVhdDiskInfo{URI: diskURI},
 		Lun: lun,
 	}
 
@@ -146,7 +147,7 @@ func (c *BlobDiskController) AttachBlobDisk(nodeName string, diskUri string, cac
 		return -1, err
 	}
 
-	err = c.common.updateArmVm(nodeName, payload)
+	err = c.common.updateArmVM(nodeName, payload)
 	if err != nil {
 		return -1, err
 	}
@@ -157,11 +158,11 @@ func (c *BlobDiskController) AttachBlobDisk(nodeName string, diskUri string, cac
 	return lun, nil
 }
 
-// detaches disk from a node
-func (c *BlobDiskController) DetachBlobDisk(nodeName string, hashedDiskUri string) error {
-	diskUri := ""
+//DetachBlobDisk : detaches disk from a node
+func (c *BlobDiskController) DetachBlobDisk(nodeName string, hasheddiskURI string) error {
+	diskURI := ""
 	var vmData interface{}
-	vm, err := c.common.getArmVm(nodeName)
+	vm, err := c.common.getArmVM(nodeName)
 
 	if err != nil {
 		return err
@@ -180,23 +181,23 @@ func (c *BlobDiskController) DetachBlobDisk(nodeName string, hashedDiskUri strin
 	dataDisks, _ := storageProfile["dataDisks"].([]interface{})
 
 	// we silently ignore, if VM does not have the disk attached
-	newDataDisks := make([]interface{}, 0)
+	var newDataDisks []interface{}
 	for _, v := range dataDisks {
 		d := v.(map[string]interface{})
 		vhdInfo := d["vhd"].(map[string]interface{})
-		vhdUri := vhdInfo["uri"].(string)
-		hashedVhdUri := MakeCRC32(vhdUri)
-		if hashedDiskUri != hashedVhdUri {
+		vhdURI := vhdInfo["uri"].(string)
+		hashedVhdURI := MakeCRC32(vhdURI)
+		if hasheddiskURI != hashedVhdURI {
 			dataDisks = append(dataDisks, v)
 		} else {
-			diskUri = vhdUri
+			diskURI = vhdURI
 		}
 
 	}
 
 	// no disk found
-	if diskUri == "" {
-		glog.Warningf("azureDisk - disk with hash %s was not found atached on node %s", hashedDiskUri, nodeName)
+	if diskURI == "" {
+		glog.Warningf("azureDisk - disk with hash %s was not found atached on node %s", hasheddiskURI, nodeName)
 		return nil
 	}
 
@@ -206,14 +207,14 @@ func (c *BlobDiskController) DetachBlobDisk(nodeName string, hashedDiskUri strin
 	if err != nil {
 		return err
 	}
-	updateErr := c.common.updateArmVm(nodeName, payload)
+	updateErr := c.common.updateArmVM(nodeName, payload)
 	if updateErr != nil {
 		return updateErr
 	}
 
 	// Wait for ARM to remove the disk from datadisks collection on the VM
 	err = kwait.ExponentialBackoff(defaultBackOff, func() (bool, error) {
-		attached, _, err := c.common.IsDiskAttached(hashedDiskUri, nodeName, false)
+		attached, _, err := c.common.IsDiskAttached(hasheddiskURI, nodeName, false)
 		if err == nil && !attached {
 			return true, nil
 		}
@@ -226,9 +227,9 @@ func (c *BlobDiskController) DetachBlobDisk(nodeName string, hashedDiskUri strin
 		err = kwait.ExponentialBackoff(defaultBackOff, func() (bool, error) {
 			var e error
 
-			noLease, e := c.diskHasNoLease(diskUri)
+			noLease, e := c.diskHasNoLease(diskURI)
 			if e != nil {
-				glog.Infof("azureDisk - failed to check if disk %s still has leases on it, we will assume clean-detach. Err:%s", diskUri, e.Error())
+				glog.Infof("azureDisk - failed to check if disk %s still has leases on it, we will assume clean-detach. Err:%s", diskURI, e.Error())
 				return true, nil
 			}
 
@@ -241,14 +242,15 @@ func (c *BlobDiskController) DetachBlobDisk(nodeName string, hashedDiskUri strin
 	}
 
 	if err != nil {
-		glog.V(4).Infof("azureDisk - detached blob disk %s from node %s but was unable to confirm complete clean-detach during poll", diskUri, nodeName)
+		glog.V(4).Infof("azureDisk - detached blob disk %s from node %s but was unable to confirm complete clean-detach during poll", diskURI, nodeName)
 	} else {
-		glog.V(4).Infof("azurDisk - detached blob disk %s from node %s", diskUri, nodeName)
+		glog.V(4).Infof("azurDisk - detached blob disk %s from node %s", diskURI, nodeName)
 	}
 
 	return nil
 }
 
+//CreateBlobDisk : create a blob disk in a node
 func (c *BlobDiskController) CreateBlobDisk(dataDiskName string, storageAccountType string, sizeGB int, forceStandAlone bool) (string, error) {
 	glog.V(4).Infof("azureDisk - creating blob data disk named:%s on StorageAccountType:%s StandAlone:%v", dataDiskName, storageAccountType, forceStandAlone)
 
@@ -260,7 +262,7 @@ func (c *BlobDiskController) CreateBlobDisk(dataDiskName string, storageAccountT
 
 	if forceStandAlone {
 		// we have to wait until the storage account is is created
-		storageAccountName = "p" + MakeCRC32(c.common.subscriptionId+c.common.resourceGroup+dataDiskName)
+		storageAccountName = "p" + MakeCRC32(c.common.subscriptionID+c.common.resourceGroup+dataDiskName)
 		err = c.createStorageAccount(storageAccountName, storageAccountType, false)
 		if err != nil {
 			return "", err
@@ -313,8 +315,9 @@ func (c *BlobDiskController) CreateBlobDisk(dataDiskName string, storageAccountT
 	return fmt.Sprintf("%s/%s/%s", host, defaultContainerName, vhdName), nil
 }
 
-func (c *BlobDiskController) DeleteBlobDisk(diskUri string, wasForced bool) error {
-	storageAccountName, vhdName, err := diskNameandSANameFromUri(diskUri)
+//DeleteBlobDisk : delete a blob disk from a node
+func (c *BlobDiskController) DeleteBlobDisk(diskURI string, wasForced bool) error {
+	storageAccountName, vhdName, err := diskNameandSANameFromURI(diskURI)
 	if err != nil {
 		return err
 	}
@@ -345,24 +348,24 @@ func (c *BlobDiskController) DeleteBlobDisk(diskUri string, wasForced bool) erro
 	return err
 }
 
-func (c *BlobDiskController) diskHasNoLease(diskUri string) (bool, error) {
-	if !strings.Contains(diskUri, defaultContainerName) {
+func (c *BlobDiskController) diskHasNoLease(diskURI string) (bool, error) {
+	if !strings.Contains(diskURI, defaultContainerName) {
 		// if the disk was attached via PV (with possibility of existing out side
 		// this RG), we will have to drop this check, as we are not sure if we can
 		// get keys for this account
-		glog.Infof("azureDisk - assumed that disk %s is not provisioned via PV and will not check if it has leases on it", diskUri)
+		glog.Infof("azureDisk - assumed that disk %s is not provisioned via PV and will not check if it has leases on it", diskURI)
 		return true, nil
 	}
 
-	diskStorageAccount, vhdName, err := diskNameandSANameFromUri(diskUri)
+	diskStorageAccount, vhdName, err := diskNameandSANameFromURI(diskURI)
 	if err != nil {
-		glog.Infof("azureDisk - could not check if disk %s has a lease on it (diskNameandSANameFromUri):%s", diskUri, err.Error())
+		glog.Infof("azureDisk - could not check if disk %s has a lease on it (diskNameandSANameFromURI):%s", diskURI, err.Error())
 		return false, err
 	}
 
 	blobSvc, e := c.getBlobSvcClient(diskStorageAccount)
 	if e != nil {
-		glog.Infof("azureDisk - could not check if disk %s has a lease on it (getBlobSvcClient):%s", diskUri, err.Error())
+		glog.Infof("azureDisk - could not check if disk %s has a lease on it (getBlobSvcClient):%s", diskURI, err.Error())
 		return false, e
 	}
 
@@ -432,7 +435,7 @@ func (c *BlobDiskController) init() error {
 
 //Sets unique strings to be used as accountnames && || blob containers names
 func (c *BlobDiskController) setUniqueStrings() {
-	uniqueString := c.common.resourceGroup + c.common.location + c.common.subscriptionId
+	uniqueString := c.common.resourceGroup + c.common.location + c.common.subscriptionID
 	hash := MakeCRC32(uniqueString)
 	//used to generate a unqie container name used by this cluster PVC
 	defaultContainerName = hash
@@ -450,7 +453,7 @@ func (c *BlobDiskController) getStorageAccountKey(SAName string) (string, error)
 
 	uri := fmt.Sprintf(storageAccountEndPointTemplate,
 		c.common.managementEndpoint,
-		c.common.subscriptionId,
+		c.common.subscriptionID,
 		c.common.resourceGroup,
 		SAName+"/listkeys")
 
@@ -579,12 +582,11 @@ func (c *BlobDiskController) ensureDefaultContainer(storageAccountName string) e
 
 			if provisionState == "Succeeded" {
 				return true, nil
-			} else {
-
-				glog.V(4).Infof("azureDisk - GetStorageAccount:%s not ready yet", storageAccountName)
-				// leave it for next loop/sync loop
-				return false, fmt.Errorf("azureDisk - Account %s has not been flagged Succeeded by ARM", storageAccountName)
 			}
+
+			glog.V(4).Infof("azureDisk - GetStorageAccount:%s not ready yet", storageAccountName)
+			// leave it for next loop/sync loop
+			return false, fmt.Errorf("azureDisk - Account %s has not been flagged Succeeded by ARM", storageAccountName)
 		})
 		// we have failed to ensure that account is ready for us to create
 		// the default vhd container
@@ -597,12 +599,12 @@ func (c *BlobDiskController) ensureDefaultContainer(storageAccountName string) e
 		return err
 	}
 
-	if bCreated, err := blobSvc.CreateContainerIfNotExists(defaultContainerName, azstorage.ContainerAccessType("")); err != nil {
+	bCreated, err := blobSvc.CreateContainerIfNotExists(defaultContainerName, azstorage.ContainerAccessType(""))
+	if err != nil {
 		return err
-	} else {
-		if bCreated {
-			glog.V(2).Infof("azureDisk - storage account:%s had no default container(%s) and it was created \n", storageAccountName, defaultContainerName)
-		}
+	}
+	if bCreated {
+		glog.V(2).Infof("azureDisk - storage account:%s had no default container(%s) and it was created \n", storageAccountName, defaultContainerName)
 	}
 
 	// flag so we no longer have to check on ARM
@@ -628,13 +630,13 @@ func (c *BlobDiskController) getDiskCount(SAName string) (int, error) {
 		return 0, err
 	}
 	params := azstorage.ListBlobsParameters{}
-	if response, err := blobSvc.ListBlobs(defaultContainerName, params); err != nil {
-		return 0, err
-	} else {
 
-		glog.V(4).Infof("azure-Disk -  refreshed data count for account %s and found %v", SAName, len(response.Blobs))
-		c.accounts[SAName].diskCount = int32(len(response.Blobs))
+	response, err := blobSvc.ListBlobs(defaultContainerName, params)
+	if err != nil {
+		return 0, err
 	}
+	glog.V(4).Infof("azure-Disk -  refreshed data count for account %s and found %v", SAName, len(response.Blobs))
+	c.accounts[SAName].diskCount = int32(len(response.Blobs))
 
 	return int(c.accounts[SAName].diskCount), nil
 }
@@ -653,7 +655,7 @@ func (c *BlobDiskController) shouldInit() bool {
 }
 
 func (c *BlobDiskController) getAllStorageAccounts() (map[string]*storageAccountState, error) {
-	uri := fmt.Sprintf(storageAccountEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionId, c.common.resourceGroup, "")
+	uri := fmt.Sprintf(storageAccountEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionID, c.common.resourceGroup, "")
 	client := &http.Client{}
 	r, err := http.NewRequest("GET", uri, nil)
 
@@ -746,7 +748,7 @@ func (c *BlobDiskController) createStorageAccount(storageAccountName string, sto
 		sPayload = fmt.Sprintf(sPayload, c.common.location, storageAccountType)
 		uri := fmt.Sprintf(storageAccountEndPointTemplate,
 			c.common.managementEndpoint,
-			c.common.subscriptionId,
+			c.common.subscriptionID,
 			c.common.resourceGroup,
 			storageAccountName)
 
@@ -890,7 +892,7 @@ func (c *BlobDiskController) getNextAccountNum() int {
 func (c *BlobDiskController) deleteStorageAccount(storageAccountName string) error {
 	uri := fmt.Sprintf(storageAccountEndPointTemplate,
 		c.common.managementEndpoint,
-		c.common.subscriptionId,
+		c.common.subscriptionID,
 		c.common.resourceGroup,
 		storageAccountName)
 
@@ -925,7 +927,7 @@ func (c *BlobDiskController) getStorageAccount(storageAccountName string) (bool,
 	// should be get or create storage accounts and should return keys (from cache)
 	uri := fmt.Sprintf(storageAccountEndPointTemplate,
 		c.common.managementEndpoint,
-		c.common.subscriptionId,
+		c.common.subscriptionID,
 		c.common.resourceGroup,
 		storageAccountName)
 
@@ -1021,8 +1023,8 @@ func createVHDHeader(size uint64) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func diskNameandSANameFromUri(diskUri string) (string, string, error) {
-	uri, err := url.Parse(diskUri)
+func diskNameandSANameFromURI(diskURI string) (string, string, error) {
+	uri, err := url.Parse(diskURI)
 	if err != nil {
 		return "", "", err
 	}

@@ -296,7 +296,7 @@ func splitProviderID(providerID string) (types.NodeName, error) {
 	return types.NodeName(matches[1]), nil
 }
 
-// convert string to CRC32 format
+//MakeCRC32 : convert string to CRC32 format
 func MakeCRC32(str string) string {
 	crc := crc32.New(polyTable)
 	crc.Write([]byte(str))

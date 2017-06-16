@@ -30,6 +30,7 @@ import (
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 )
 
+//ManagedDiskController : managed disk controller struct
 type ManagedDiskController struct {
 	common *controllerCommon
 }
@@ -38,7 +39,8 @@ func newManagedDiskController(common *controllerCommon) (*ManagedDiskController,
 	return &ManagedDiskController{common: common}, nil
 }
 
-func (c *ManagedDiskController) AttachManagedDisk(nodeName string, diskUri string, cacheMode string) (int, error) {
+//AttachManagedDisk : attach managed disk
+func (c *ManagedDiskController) AttachManagedDisk(nodeName string, diskURI string, cacheMode string) (int, error) {
 	// We don't need to validate if the disk is already attached
 	// to a different VM. The VM update call below will fail if
 	// it was attached somewhere else
@@ -46,7 +48,7 @@ func (c *ManagedDiskController) AttachManagedDisk(nodeName string, diskUri strin
 	// this behaviour is expected in (i.e during a k8s drain node call)
 	// k8s will evantually call detach->oldnode followed by attach->newnode
 	var vmData interface{}
-	vm, err := c.common.getArmVm(nodeName)
+	vm, err := c.common.getArmVM(nodeName)
 
 	if err != nil {
 		return -1, err
@@ -66,9 +68,9 @@ func (c *ManagedDiskController) AttachManagedDisk(nodeName string, diskUri strin
 	vmSize := hardwareProfile["vmSize"].(string)
 	storageProfile := props["storageProfile"].(map[string]interface{})
 
-	managedVm := c.common.isManagedArmVm(storageProfile)
-	if !managedVm {
-		return -1, fmt.Errorf("azureDisk - error: attempt to attach managed disk %s to an unmanaged node  %s ", diskUri, nodeName)
+	managedVM := c.common.isManagedArmVM(storageProfile)
+	if !managedVM {
+		return -1, fmt.Errorf("azureDisk - error: attempt to attach managed disk %s to an unmanaged node  %s ", diskURI, nodeName)
 	}
 
 	dataDisks := storageProfile["dataDisks"].([]interface{})
@@ -78,8 +80,8 @@ func (c *ManagedDiskController) AttachManagedDisk(nodeName string, diskUri strin
 		return -1, err
 	}
 
-	managedDiskInfo := &armVmManagedDiskInfo{Id: diskUri}
-	newDisk := &armVmDataDisk{
+	managedDiskInfo := &armVMManagedDiskInfo{ID: diskURI}
+	newDisk := &armVMDataDisk{
 		Caching:      cacheMode,
 		CreateOption: "Attach",
 		ManagedDisk:  managedDiskInfo,
@@ -96,21 +98,22 @@ func (c *ManagedDiskController) AttachManagedDisk(nodeName string, diskUri strin
 		return -1, err
 	}
 
-	if err = c.common.updateArmVm(nodeName, payload); err != nil {
+	if err = c.common.updateArmVM(nodeName, payload); err != nil {
 		return -1, err
 	}
 
 	// We don't need to poll ARM here, since WaitForAttach (running on node) will
 	// be looping on the node to get devicepath /dev/sd* by lun#
-	glog.V(2).Infof("azureDisk - Attached disk %s to node %s", diskUri, nodeName)
+	glog.V(2).Infof("azureDisk - Attached disk %s to node %s", diskURI, nodeName)
 
 	return lun, err
 }
 
-func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskId string) error {
-	diskId := ""
+//DetachManagedDisk : detach managed disk
+func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskID string) error {
+	diskID := ""
 	var vmData interface{}
-	vm, err := c.common.getArmVm(nodeName)
+	vm, err := c.common.getArmVM(nodeName)
 
 	if err != nil {
 		return err
@@ -128,28 +131,28 @@ func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskId 
 	storageProfile := props["storageProfile"].(map[string]interface{})
 	dataDisks, _ := storageProfile["dataDisks"].([]interface{})
 
-	newDataDisks := make([]interface{}, 0)
+	var newDataDisks []interface{}
 	for _, v := range dataDisks {
 		d := v.(map[string]interface{})
 		md := d["managedDisk"].(map[string]interface{})
 
-		currentDiskId := strings.ToLower(md["id"].(string))
-		hashedCurrentDiskId := MakeCRC32(currentDiskId)
+		currentDiskID := strings.ToLower(md["id"].(string))
+		hashedCurrentDiskID := MakeCRC32(currentDiskID)
 
-		if hashedDiskId != hashedCurrentDiskId {
+		if hashedDiskID != hashedCurrentDiskID {
 			newDataDisks = append(newDataDisks, d)
 		} else {
-			diskId = currentDiskId
+			diskID = currentDiskID
 		}
 	}
 
-	if diskId == "" {
-		glog.Warningf("azureDisk - disk with hash %s was not found atached on node %s", hashedDiskId, nodeName)
+	if diskID == "" {
+		glog.Warningf("azureDisk - disk with hash %s was not found atached on node %s", hashedDiskID, nodeName)
 		return nil
 	}
 
 	//get Disk Name
-	diskName := path.Base(diskId)
+	diskName := path.Base(diskID)
 
 	storageProfile["dataDisks"] = newDataDisks // -> store back
 	payload := new(bytes.Buffer)
@@ -158,10 +161,10 @@ func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskId 
 	if err != nil {
 		return err
 	}
-	updateErr := c.common.updateArmVm(nodeName, payload)
+	updateErr := c.common.updateArmVM(nodeName, payload)
 
 	if updateErr != nil {
-		glog.Infof("azureDisk - error while detaching a managed disk disk(%s) node(%s) error(%s)", diskId, nodeName, updateErr.Error())
+		glog.Infof("azureDisk - error while detaching a managed disk disk(%s) node(%s) error(%s)", diskID, nodeName, updateErr.Error())
 		return updateErr
 	}
 	// poll
@@ -172,19 +175,17 @@ func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskId 
 	// 2) disk status is not: unattached
 	err = kwait.ExponentialBackoff(defaultBackOff, func() (bool, error) {
 		// confirm that it is attached to the machine
-		attached, _, err := c.common.IsDiskAttached(hashedDiskId, nodeName, true)
+		attached, _, err := c.common.IsDiskAttached(hashedDiskID, nodeName, true)
 		if err == nil && !attached {
 			// confirm that the disk status has changed
 			_, _, aState, err := c.getDisk(diskName)
 
 			if err == nil && aState == "Unattached" {
 				return true, nil
-			} else {
-				return false, err
 			}
-		} else {
 			return false, err
 		}
+		return false, err
 	})
 
 	if err != nil {
@@ -196,6 +197,7 @@ func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskId 
 	return nil
 }
 
+//CreateManagedDisk : create managed disk
 func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccountType string, sizeGB int, tags map[string]string) (string, error) {
 	glog.V(4).Infof("azureDisk - dreating new managed Name:%s StorageAccountType:%s Size:%v", diskName, storageAccountType, sizeGB)
 
@@ -217,7 +219,7 @@ func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccoun
 	// Azure won't allow / (forward slash) in tags
 	tagsString = strings.Replace(tagsString, "/", "-", -1)
 
-	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionId, c.common.resourceGroup, diskName, apiversion)
+	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionID, c.common.resourceGroup, diskName, apiversion)
 
 	requestData := `{ "tags" : ` + tagsString + `,   "location" : "` + c.common.location + `", "properties":  { "creationData":  {"createOption": "Empty" }, "accountType"  : "` + storageAccountType + `", "diskSizeGB": "` + strconv.Itoa(sizeGB) + `"  } }`
 
@@ -242,7 +244,7 @@ func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccoun
 		return "", getRestError(fmt.Sprintf("Create Managed Disk: %s", diskName), err, 202, resp.StatusCode, resp.Body)
 	}
 
-	diskId := fmt.Sprintf(diskIdTemplate, c.common.subscriptionId, c.common.resourceGroup, diskName)
+	diskID := fmt.Sprintf(diskIDTemplate, c.common.subscriptionID, c.common.resourceGroup, diskName)
 
 	err = kwait.ExponentialBackoff(defaultBackOff, func() (bool, error) {
 		exists, pState, _, err := c.getDisk(diskName)
@@ -251,13 +253,11 @@ func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccoun
 		//still being provisioned, this is to avoid some racy conditions
 		if err != nil {
 			return false, err
-		} else {
-			if exists && pState == "Succeeded" {
-				return true, nil
-			} else {
-				return false, nil
-			}
 		}
+		if exists && pState == "Succeeded" {
+			return true, nil
+		}
+		return false, nil
 	})
 
 	if err != nil {
@@ -266,12 +266,13 @@ func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccoun
 		glog.V(2).Infof("azureDisk - created new MD Name:%s StorageAccountType:%s Size:%v", diskName, storageAccountType, sizeGB)
 	}
 
-	return diskId, nil
+	return diskID, nil
 }
 
-func (c *ManagedDiskController) DeleteManagedDisk(diskUri string) error {
-	diskName := path.Base(diskUri)
-	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionId, c.common.resourceGroup, diskName, apiversion)
+//DeleteManagedDisk : delete managed disk
+func (c *ManagedDiskController) DeleteManagedDisk(diskURI string) error {
+	diskName := path.Base(diskURI)
+	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionID, c.common.resourceGroup, diskName, apiversion)
 
 	client := &http.Client{}
 	r, err := http.NewRequest("DELETE", uri, nil)
@@ -289,20 +290,20 @@ func (c *ManagedDiskController) DeleteManagedDisk(diskUri string) error {
 	resp, err := client.Do(r)
 
 	if err != nil || resp.StatusCode != 202 {
-		return getRestError(fmt.Sprintf("Delete Managed Disk: %s", diskUri), err, 202, resp.StatusCode, resp.Body)
+		return getRestError(fmt.Sprintf("Delete Managed Disk: %s", diskURI), err, 202, resp.StatusCode, resp.Body)
 	}
 
 	defer resp.Body.Close()
 	// We don't need poll here, k8s will immediatly stop referencing the disk
 	// the disk will be evantually deleted - cleanly - by ARM
 
-	glog.V(2).Infof("azureDisk - deleted a managed disk: %s", diskUri)
+	glog.V(2).Infof("azureDisk - deleted a managed disk: %s", diskURI)
 
 	return nil
 }
 
 func (c *ManagedDiskController) getDisk(diskName string) (bool, string, string, error) {
-	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionId, c.common.resourceGroup, diskName, apiversion)
+	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionID, c.common.resourceGroup, diskName, apiversion)
 
 	client := &http.Client{}
 	r, err := http.NewRequest("GET", uri, nil)

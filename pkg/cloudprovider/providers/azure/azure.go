@@ -364,15 +364,15 @@ func initDiskControllers(az *Cloud) error {
 
 	common := &controllerCommon{
 		aadResourceEndPoint:   az.Environment.ServiceManagementEndpoint,
-		clientId:              az.AADClientID,
+		clientID:              az.AADClientID,
 		clientSecret:          az.AADClientSecret,
 		location:              az.Location,
 		storageEndpointSuffix: az.Environment.StorageEndpointSuffix,
 		managementEndpoint:    az.Environment.ResourceManagerEndpoint,
 		resourceGroup:         az.ResourceGroup,
-		tenantId:              az.TenantID,
+		tenantID:              az.TenantID,
 		tokenEndPoint:         az.Environment.ActiveDirectoryEndpoint,
-		subscriptionId:        az.SubscriptionID,
+		subscriptionID:        az.SubscriptionID,
 	}
 
 	// BlobDiskController: contains the function needed to
