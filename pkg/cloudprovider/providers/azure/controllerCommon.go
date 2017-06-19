@@ -157,15 +157,33 @@ func (c *controllerCommon) IsDiskAttached(hashedDiskURI, nodeName string, isMana
 		return attached, lun, err
 	}
 
-	fragment := vmData.(map[string]interface{})
-	props := fragment["properties"].(map[string]interface{})
-	storageProfile := props["storageProfile"].(map[string]interface{})
-	dataDisks, _ := storageProfile["dataDisks"].([]interface{})
+	fragment, ok := vmData.(map[string]interface{})
+	if !ok {
+		return attached, lun, fmt.Errorf("convert vmData to map error")
+	}
+
+	props, ok := fragment["properties"].(map[string]interface{})
+	if !ok {
+		return attached, lun, fmt.Errorf("convert vmData(properties) to map error")
+	}
+
+	storageProfile, ok := props["storageProfile"].(map[string]interface{})
+	if !ok {
+		return attached, lun, fmt.Errorf("convert vmData(storageProfile) to map error")
+	}
+
+	dataDisks, ok := storageProfile["dataDisks"].([]interface{})
+	if !ok {
+		return attached, lun, fmt.Errorf("convert vmData(dataDisks) to map error")
+	}
 
 	for _, v := range dataDisks {
 		d := v.(map[string]interface{})
 		if isManaged {
-			md := d["managedDisk"].(map[string]interface{})
+			md, ok := d["managedDisk"].(map[string]interface{})
+			if !ok {
+				return attached, lun, fmt.Errorf("convert vmData(managedDisk) to map error")
+			}
 			currentDiskID := strings.ToLower(md["id"].(string))
 			hashedCurrentDiskID := MakeCRC32(currentDiskID)
 			if hashedCurrentDiskID == hashedDiskURI {
@@ -174,7 +192,10 @@ func (c *controllerCommon) IsDiskAttached(hashedDiskURI, nodeName string, isMana
 				break
 			}
 		} else {
-			blobDisk := d["vhd"].(map[string]interface{})
+			blobDisk, ok := d["vhd"].(map[string]interface{})
+			if !ok {
+				return attached, lun, fmt.Errorf("convert vmData(vhd) to map error")
+			}
 			blobDiskURI := blobDisk["uri"].(string)
 			hashedBlobDiskURI := MakeCRC32(blobDiskURI)
 			if hashedBlobDiskURI == hashedDiskURI {

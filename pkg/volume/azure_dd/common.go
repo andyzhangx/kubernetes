@@ -23,7 +23,7 @@ import (
 	"path"
 	"regexp"
 	"strconv"
-	STRINGS "strings"
+	libstrings "strings"
 
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/types"
@@ -69,7 +69,7 @@ func getPath(uid types.UID, volName string, host volume.VolumeHost) string {
 
 // creates a unique path for disks (even if they share the same *.vhd name)
 func makeGlobalPDPath(host volume.VolumeHost, diskUri string, isManaged bool) (string, error) {
-	diskUri = STRINGS.ToLower(diskUri) // always lower uri because users may enter it in caps.
+	diskUri = libstrings.ToLower(diskUri) // always lower uri because users may enter it in caps.
 	uniqueDiskNameTemplate := "%s%s"
 	hashedDiskUri := azure.MakeCRC32(diskUri)
 	prefix := "b"
@@ -191,7 +191,7 @@ func listAzureDiskPath(io ioHandler) []string {
 			name := f.Name()
 			diskPath := azureDiskPath + name
 			if link, linkErr := io.Readlink(diskPath); linkErr == nil {
-				sd := link[(STRINGS.LastIndex(link, "/") + 1):]
+				sd := link[(libstrings.LastIndex(link, "/") + 1):]
 				azureDiskList = append(azureDiskList, sd)
 			}
 		}
@@ -228,7 +228,7 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, exe exec.Interface, azur
 		for _, f := range dirs {
 			name := f.Name()
 			// look for path like /sys/bus/scsi/devices/3:0:0:1
-			arr := STRINGS.Split(name, ":")
+			arr := libstrings.Split(name, ":")
 			if len(arr) < 4 {
 				continue
 			}
@@ -250,7 +250,7 @@ func findDiskByLunWithConstraint(lun int, io ioHandler, exe exec.Interface, azur
 					glog.V(4).Infof("azure disk - failed to cat device vendor and model, err: %v", err)
 					continue
 				}
-				matched, err := regexp.MatchString("^MSFT[ ]{0,}\nVIRTUAL DISK[ ]{0,}\n$", STRINGS.ToUpper(string(out)))
+				matched, err := regexp.MatchString("^MSFT[ ]{0,}\nVIRTUAL DISK[ ]{0,}\n$", libstrings.ToUpper(string(out)))
 				if err != nil || !matched {
 					glog.V(4).Infof("azure disk - doesn't match VHD, output %v, error %v", string(out), err)
 					continue
@@ -316,7 +316,7 @@ func diskLooksUnformatted(disk string) (bool, error) {
 		glog.Errorf("Could not determine if disk %q is formatted (%v)", disk, err)
 		return false, err
 	}
-	output := STRINGS.TrimSpace(string(dataOut))
+	output := libstrings.TrimSpace(string(dataOut))
 	return output == "", nil
 }
 
