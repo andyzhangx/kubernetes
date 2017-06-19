@@ -116,23 +116,33 @@ func (c *controllerCommon) GetAttachedDisks(nodeName string) ([]string, error) {
 		return disks, err
 	}
 
-	fragment := vmData.(map[string]interface{})
+	fragment, ok := vmData.(map[string]interface{})
+	if !ok {
+		return disks, fmt.Errorf("convert vmData to map error")
+	}
 
-	props := fragment["properties"].(map[string]interface{})
-	storageProfile := props["storageProfile"].(map[string]interface{})
-	dataDisks, _ := storageProfile["dataDisks"].([]interface{})
+	dataDisks, _, _, err := ExtractVMData(fragment)
+	if err != nil {
+		return disks, err
+	}
 
 	// we silently ignore, if VM does not have the disk attached
 	for _, v := range dataDisks {
 		d := v.(map[string]interface{})
 		if _, ok := d["vhd"]; ok {
 			// this is a blob disk
-			vhdInfo := d["vhd"].(map[string]interface{})
+			vhdInfo, ok := d["vhd"].(map[string]interface{})
+			if !ok {
+				return disks, fmt.Errorf("convert vmData(vhd) to map error")
+			}
 			vhdURI := vhdInfo["uri"].(string)
 			disks = append(disks, vhdURI)
 		} else {
 			// this is managed disk
-			managedDiskInfo := d["managedDisk"].(map[string]interface{})
+			managedDiskInfo, ok := d["managedDisk"].(map[string]interface{})
+			if !ok {
+				return disks, fmt.Errorf("convert vmData(managedDisk) to map error")
+			}
 			managedDiskID := managedDiskInfo["id"].(string)
 			disks = append(disks, managedDiskID)
 		}
@@ -162,19 +172,9 @@ func (c *controllerCommon) IsDiskAttached(hashedDiskURI, nodeName string, isMana
 		return attached, lun, fmt.Errorf("convert vmData to map error")
 	}
 
-	props, ok := fragment["properties"].(map[string]interface{})
-	if !ok {
-		return attached, lun, fmt.Errorf("convert vmData(properties) to map error")
-	}
-
-	storageProfile, ok := props["storageProfile"].(map[string]interface{})
-	if !ok {
-		return attached, lun, fmt.Errorf("convert vmData(storageProfile) to map error")
-	}
-
-	dataDisks, ok := storageProfile["dataDisks"].([]interface{})
-	if !ok {
-		return attached, lun, fmt.Errorf("convert vmData(dataDisks) to map error")
+	dataDisks, _, _, err := ExtractVMData(fragment)
+	if err != nil {
+		return attached, lun, err
 	}
 
 	for _, v := range dataDisks {
@@ -327,7 +327,10 @@ func parseAADToken(payload []byte) (string, time.Time, error) {
 		return "", expiresOn, err
 	}
 
-	fragment := f.(map[string]interface{})
+	fragment, ok := f.(map[string]interface{})
+	if !ok {
+		return "", expiresOn, fmt.Errorf("convert vmData to map error")
+	}
 	if sToken, ok = fragment["access_token"].(string); ok != true {
 		return "", expiresOn, fmt.Errorf("Disk controller (ARM Client) cannot parse AAD token - access_token field")
 	}

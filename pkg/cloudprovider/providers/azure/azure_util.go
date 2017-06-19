@@ -303,3 +303,48 @@ func MakeCRC32(str string) string {
 	hash := crc.Sum32()
 	return strconv.FormatUint(uint64(hash), 10)
 }
+
+//ExtractVMData : extract dataDisks, storageProfile from a map struct
+func ExtractVMData(vmData map[string]interface{}) (dataDisks []interface{},
+	storageProfile map[string]interface{},
+	hardwareProfile map[string]interface{}, err error) {
+	props, ok := vmData["properties"].(map[string]interface{})
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("convert vmData(properties) to map error")
+	}
+
+	storageProfile, ok = props["storageProfile"].(map[string]interface{})
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("convert vmData(storageProfile) to map error")
+	}
+
+	hardwareProfile, ok = props["hardwareProfile"].(map[string]interface{})
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("convert vmData(hardwareProfile) to map error")
+	}
+
+	dataDisks, ok = storageProfile["dataDisks"].([]interface{})
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("convert vmData(dataDisks) to map error")
+	}
+	return dataDisks, storageProfile, hardwareProfile, nil
+}
+
+//ExtractDiskData : extract provisioningState, diskState from a map struct
+func ExtractDiskData(diskData interface{}) (provisioningState string, diskState string, err error) {
+	fragment, ok := diskData.(map[string]interface{})
+	if !ok {
+		return "", "", fmt.Errorf("convert diskData to map error")
+	}
+
+	properties, ok := fragment["properties"].(map[string]interface{})
+	if !ok {
+		return "", "", fmt.Errorf("convert diskData(properties) to map error")
+	}
+
+	provisioningState, ok = properties["provisioningState"].(string) // if there is a disk, provisioningState property will be there
+	if ref, ok := properties["diskState"]; ok {
+		diskState = ref.(string)
+	}
+	return provisioningState, diskState, nil
+}

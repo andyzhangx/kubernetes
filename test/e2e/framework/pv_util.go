@@ -722,8 +722,7 @@ func createPD(zone string) (string, error) {
 		}
 
 		if azureCloud.BlobDiskController == nil {
-			Logf("BlobDiskController is nil, it's not expected.")
-			return "", nil
+			return "", fmt.Errorf("BlobDiskController is nil, it's not expected.")
 		}
 
 		diskUri, err := azureCloud.BlobDiskController.CreateBlobDisk(pdName, "standard_lrs", 1, false)
@@ -777,8 +776,7 @@ func deletePD(pdName string) error {
 			return err
 		}
 		if azureCloud.BlobDiskController == nil {
-			Logf("BlobDiskController is nil, it's not expected.")
-			return nil
+			return fmt.Errorf("BlobDiskController is nil, it's not expected.")
 		}
 		diskName := pdName[(strings.LastIndex(pdName, "/") + 1):]
 		err = azureCloud.BlobDiskController.DeleteBlobDisk(diskName, false)

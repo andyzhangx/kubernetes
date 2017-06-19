@@ -106,22 +106,24 @@ func (c *BlobDiskController) AttachBlobDisk(nodeName string, diskURI string, cac
 		return -1, err
 	}
 
-	fragment := vmData.(map[string]interface{})
-
+	fragment, ok := vmData.(map[string]interface{})
+	if !ok {
+		return -1, fmt.Errorf("convert vmData to map error")
+	}
 	// remove "resources" as ARM does not support PUT with "resources"
 	delete(fragment, "resources")
 
-	props := fragment["properties"].(map[string]interface{})
-	hardwareProfile := props["hardwareProfile"].(map[string]interface{})
+	dataDisks, storageProfile, hardwareProfile, err := ExtractVMData(fragment)
+	if err != nil {
+		return -1, err
+	}
 	vmSize := hardwareProfile["vmSize"].(string)
-	storageProfile := props["storageProfile"].(map[string]interface{})
 
 	managedVM := c.common.isManagedArmVM(storageProfile)
 	if managedVM {
 		return -1, fmt.Errorf("azureDisk - error: attempt to attach blob disk %s to an managed node  %s ", diskName, nodeName)
 	}
 
-	dataDisks := storageProfile["dataDisks"].([]interface{})
 	lun, err := findEmptyLun(vmSize, dataDisks)
 
 	if err != nil {
@@ -172,19 +174,25 @@ func (c *BlobDiskController) DetachBlobDisk(nodeName string, hasheddiskURI strin
 		return err
 	}
 
-	fragment := vmData.(map[string]interface{})
-
+	fragment, ok := vmData.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("convert vmData to map error")
+	}
 	// remove "resources" as ARM does not support PUT with "resources"
 	delete(fragment, "resources")
-	props := fragment["properties"].(map[string]interface{})
-	storageProfile := props["storageProfile"].(map[string]interface{})
-	dataDisks, _ := storageProfile["dataDisks"].([]interface{})
+	dataDisks, storageProfile, _, err := ExtractVMData(fragment)
+	if err != nil {
+		return err
+	}
 
 	// we silently ignore, if VM does not have the disk attached
 	var newDataDisks []interface{}
 	for _, v := range dataDisks {
 		d := v.(map[string]interface{})
-		vhdInfo := d["vhd"].(map[string]interface{})
+		vhdInfo, ok := d["vhd"].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("convert vmData(vhd) to map error")
+		}
 		vhdURI := vhdInfo["uri"].(string)
 		hashedVhdURI := MakeCRC32(vhdURI)
 		if hasheddiskURI != hashedVhdURI {
@@ -971,10 +979,18 @@ func (c *BlobDiskController) getStorageAccount(storageAccountName string) (bool,
 		return false, "", err
 	}
 
-	fragment := payload.(map[string]interface{})
-	props := fragment["properties"].(map[string]interface{})
-	provisionState := props["provisioningState"].(string)
-
+	fragment, ok := payload.(map[string]interface{})
+	if !ok {
+		return false, "", fmt.Errorf("convert payload to map error")
+	}
+	props, ok := fragment["properties"].(map[string]interface{})
+	if !ok {
+		return false, "", fmt.Errorf("convert payload(properties) to map error")
+	}
+	provisionState, ok := props["provisioningState"].(string)
+	if !ok {
+		return false, "", fmt.Errorf("convert payload(provisioningState) to map error")
+	}
 	return true, provisionState, nil
 }
 

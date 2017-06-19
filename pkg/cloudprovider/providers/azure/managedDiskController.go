@@ -58,22 +58,24 @@ func (c *ManagedDiskController) AttachManagedDisk(nodeName string, diskURI strin
 		return -1, err
 	}
 
-	fragment := vmData.(map[string]interface{})
-
+	fragment, ok := vmData.(map[string]interface{})
+	if !ok {
+		return -1, fmt.Errorf("convert vmData to map error")
+	}
 	// remove "resources" as ARM does not support PUT with "resources"
 	delete(fragment, "resources")
 
-	props := fragment["properties"].(map[string]interface{})
-	hardwareProfile := props["hardwareProfile"].(map[string]interface{})
+	dataDisks, storageProfile, hardwareProfile, err := ExtractVMData(fragment)
+	if err != nil {
+		return -1, err
+	}
 	vmSize := hardwareProfile["vmSize"].(string)
-	storageProfile := props["storageProfile"].(map[string]interface{})
 
 	managedVM := c.common.isManagedArmVM(storageProfile)
 	if !managedVM {
 		return -1, fmt.Errorf("azureDisk - error: attempt to attach managed disk %s to an unmanaged node  %s ", diskURI, nodeName)
 	}
 
-	dataDisks := storageProfile["dataDisks"].([]interface{})
 	lun, err := findEmptyLun(vmSize, dataDisks)
 
 	if err != nil {
@@ -123,18 +125,25 @@ func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskID 
 		return err
 	}
 
-	fragment := vmData.(map[string]interface{})
+	fragment, ok := vmData.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("convert vmData to map error")
+	}
 
 	// remove "resources" as ARM does not support PUT with "resources"
 	delete(fragment, "resources")
-	props := fragment["properties"].(map[string]interface{})
-	storageProfile := props["storageProfile"].(map[string]interface{})
-	dataDisks, _ := storageProfile["dataDisks"].([]interface{})
+	dataDisks, storageProfile, _, err := ExtractVMData(fragment)
+	if err != nil {
+		return err
+	}
 
 	var newDataDisks []interface{}
 	for _, v := range dataDisks {
 		d := v.(map[string]interface{})
-		md := d["managedDisk"].(map[string]interface{})
+		md, ok := d["managedDisk"].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("convert vmData(managedDisk) to map error")
+		}
 
 		currentDiskID := strings.ToLower(md["id"].(string))
 		hashedCurrentDiskID := MakeCRC32(currentDiskID)
@@ -342,15 +351,9 @@ func (c *ManagedDiskController) getDisk(diskName string) (bool, string, string, 
 	}
 
 	// Extract Provisioning State & Disk State
-
-	diskState := ""
-	provisioningState := ""
-
-	fragment := disk.(map[string]interface{})
-	properties := fragment["properties"].(map[string]interface{})
-	provisioningState = properties["provisioningState"].(string) // if there is a disk, provisioningState property will be there
-	if ref, ok := properties["diskState"]; ok {
-		diskState = ref.(string)
+	provisioningState, diskState, err := ExtractDiskData(disk)
+	if err != nil {
+		return false, "", "", err
 	}
 
 	return true, provisioningState, diskState, nil
