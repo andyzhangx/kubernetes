@@ -25,6 +25,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/golang/glog"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
@@ -75,6 +76,11 @@ func (c *ManagedDiskController) AttachManagedDisk(nodeName string, diskURI strin
 	if !managedVM {
 		return -1, fmt.Errorf("azureDisk - error: attempt to attach managed disk %s to an unmanaged node  %s ", diskURI, nodeName)
 	}
+
+	// lock for findEmptyLun and append disk
+	var mutex = &sync.Mutex{}
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	lun, err := findEmptyLun(vmSize, dataDisks)
 
@@ -208,7 +214,7 @@ func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskID 
 
 //CreateManagedDisk : create managed disk
 func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccountType string, sizeGB int, tags map[string]string) (string, error) {
-	glog.V(4).Infof("azureDisk - dreating new managed Name:%s StorageAccountType:%s Size:%v", diskName, storageAccountType, sizeGB)
+	glog.V(4).Infof("azureDisk - creating new managed Name:%s StorageAccountType:%s Size:%v", diskName, storageAccountType, sizeGB)
 
 	if tags == nil {
 		tags = make(map[string]string)

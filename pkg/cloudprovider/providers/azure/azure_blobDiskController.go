@@ -124,6 +124,11 @@ func (c *BlobDiskController) AttachBlobDisk(nodeName string, diskURI string, cac
 		return -1, fmt.Errorf("azureDisk - error: attempt to attach blob disk %s to an managed node  %s ", diskName, nodeName)
 	}
 
+	// lock for findEmptyLun and append disk
+	var mutex = &sync.Mutex{}
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	lun, err := findEmptyLun(vmSize, dataDisks)
 
 	if err != nil {
