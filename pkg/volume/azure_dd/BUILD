@@ -13,9 +13,9 @@ go_library(
     srcs = [
         "attacher.go",
         "azure_dd.go",
-        "common.go",
-        "mounter.go",
-        "provisioner.go",
+        "azure_common.go",
+        "azure_mounter.go",
+        "azure_provisioner.go",
     ],
     tags = ["automanaged"],
     deps = [

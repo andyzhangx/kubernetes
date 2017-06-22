@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -115,7 +115,7 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 		case "fstype":
 			fsType = strings.ToLower(v)
 		default:
-			return nil, fmt.Errorf("AzureDisk - invalid option %s in PVC", k)
+			return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
 		}
 	}
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,8 +38,8 @@ import (
 )
 
 const (
-	default_fstype               = "ext4"
-	default_storage_account_type = "standard_lrs"
+	defaultFSType               = "ext4"
+	defaultStorageAccountType = "standard_lrs"
 )
 
 type dataDisk struct {
@@ -118,7 +118,7 @@ func getVolumeSource(spec *volume.Spec) (*v1.AzureDiskVolumeSource, error) {
 
 func normalizeFsType(fsType string) string {
 	if fsType == "" {
-		return default_fstype
+		return defaultFSType
 	}
 
 	return fsType
@@ -138,7 +138,7 @@ func normalizeKind(kind v1.AzureDataDiskKind) (v1.AzureDataDiskKind, error) {
 
 func normalizeStorageAccountType(storageAccountType string) (string, error) {
 	if storageAccountType == "" {
-		return default_storage_account_type, nil
+		return defaultStorageAccountType, nil
 	}
 
 	if !supportedStorageAccountTypes.Has(storageAccountType) {
