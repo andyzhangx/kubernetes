@@ -176,6 +176,7 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 					DiskName:    name,
 					DataDiskURI: diskUri,
 					Kind:        &kind,
+					FSType:      &fsType,
 				},
 			},
 		},

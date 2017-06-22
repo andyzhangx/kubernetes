@@ -38,7 +38,7 @@ import (
 )
 
 const (
-	defaultFSType               = "ext4"
+	defaultFSType             = "ext4"
 	defaultStorageAccountType = "standard_lrs"
 )
 
