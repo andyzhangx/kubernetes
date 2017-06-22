@@ -10,6 +10,7 @@ load(
 go_library(
     name = "go_default_library",
     srcs = [
+        "codecgen-pkg-1234.generated.go",
         "conversion.go",
         "defaults.go",
         "doc.go",

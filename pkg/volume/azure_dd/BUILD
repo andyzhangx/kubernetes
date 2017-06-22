@@ -12,8 +12,8 @@ go_library(
     name = "go_default_library",
     srcs = [
         "attacher.go",
-        "azure_dd.go",
         "azure_common.go",
+        "azure_dd.go",
         "azure_mounter.go",
         "azure_provisioner.go",
     ],
@@ -55,8 +55,8 @@ filegroup(
 go_test(
     name = "go_default_test",
     srcs = [
+        "azure_common_test.go",
         "azure_dd_test.go",
-        "common_test.go",
     ],
     library = ":go_default_library",
     tags = ["automanaged"],
