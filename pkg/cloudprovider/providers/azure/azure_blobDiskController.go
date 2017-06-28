@@ -806,7 +806,7 @@ func (c *BlobDiskController) getNextAccountNum() int {
 func (c *BlobDiskController) deleteStorageAccount(storageAccountName string) error {
 	resp, err := c.common.cloud.StorageAccountClient.Delete(c.common.resourceGroup, storageAccountName)
 	if err != nil {
-		return fmt.Errorf("azureDisk - Delete of storage account '%s' failed with status %s\n...%v\n", storageAccountName, resp.Status, err)
+		return fmt.Errorf("azureDisk - Delete of storage account '%s' failed with status %s...%v", storageAccountName, resp.Status, err)
 	}
 
 	c.removeAccountState(storageAccountName)
