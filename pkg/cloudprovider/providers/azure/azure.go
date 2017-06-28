@@ -30,6 +30,7 @@ import (
 	"k8s.io/kubernetes/pkg/version"
 
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
+	"github.com/Azure/azure-sdk-for-go/arm/disk"
 	"github.com/Azure/azure-sdk-for-go/arm/network"
 	"github.com/Azure/azure-sdk-for-go/arm/storage"
 	"github.com/Azure/go-autorest/autorest"
@@ -119,6 +120,7 @@ type Cloud struct {
 	SecurityGroupsClient     network.SecurityGroupsClient
 	VirtualMachinesClient    compute.VirtualMachinesClient
 	StorageAccountClient     storage.AccountsClient
+	DisksClient              disk.DisksClient
 	operationPollRateLimiter flowcontrol.RateLimiter
 	resourceRequestBackoff   wait.Backoff
 
@@ -256,6 +258,9 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 
 	az.StorageAccountClient = storage.NewAccountsClientWithBaseURI(az.Environment.ResourceManagerEndpoint, az.SubscriptionID)
 	az.StorageAccountClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
+
+	az.DisksClient = disk.NewDisksClientWithBaseURI(az.Environment.ResourceManagerEndpoint, az.SubscriptionID)
+	az.DisksClient.Authorizer = servicePrincipalToken
 
 	// Conditionally configure rate limits
 	if az.CloudProviderRateLimit {
