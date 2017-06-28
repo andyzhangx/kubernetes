@@ -373,6 +373,7 @@ func initDiskControllers(az *Cloud) error {
 		tenantID:              az.TenantID,
 		tokenEndPoint:         az.Environment.ActiveDirectoryEndpoint,
 		subscriptionID:        az.SubscriptionID,
+		cloud:                 az,
 	}
 
 	// BlobDiskController: contains the function needed to

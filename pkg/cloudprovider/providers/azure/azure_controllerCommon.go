@@ -92,6 +92,7 @@ type controllerCommon struct {
 	aadResourceEndPoint   string
 	aadToken              string
 	expiresOn             time.Time
+	cloud                 *Cloud
 }
 
 func (c *controllerCommon) isManagedArmVM(storageProfile map[string]interface{}) bool {

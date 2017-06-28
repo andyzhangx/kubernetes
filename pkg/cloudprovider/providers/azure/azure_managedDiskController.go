@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync"
 
+	storage "github.com/Azure/azure-sdk-for-go/arm/storage"
 	"github.com/golang/glog"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 )
@@ -213,7 +214,7 @@ func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskID 
 }
 
 //CreateManagedDisk : create managed disk
-func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccountType string, sizeGB int, tags map[string]string) (string, error) {
+func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccountType storage.SkuName, sizeGB int, tags map[string]string) (string, error) {
 	glog.V(4).Infof("azureDisk - creating new managed Name:%s StorageAccountType:%s Size:%v", diskName, storageAccountType, sizeGB)
 
 	if tags == nil {
@@ -236,7 +237,7 @@ func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccoun
 
 	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionID, c.common.resourceGroup, diskName, apiversion)
 
-	requestData := `{ "tags" : ` + tagsString + `,   "location" : "` + c.common.location + `", "properties":  { "creationData":  {"createOption": "Empty" }, "accountType"  : "` + storageAccountType + `", "diskSizeGB": "` + strconv.Itoa(sizeGB) + `"  } }`
+	requestData := `{ "tags" : ` + tagsString + `,   "location" : "` + c.common.location + `", "properties":  { "creationData":  {"createOption": "Empty" }, "accountType"  : "` + string(storageAccountType) + `", "diskSizeGB": "` + strconv.Itoa(sizeGB) + `"  } }`
 
 	client := &http.Client{}
 	content := bytes.NewBufferString(requestData)

@@ -21,9 +21,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math"
-	"net/http"
 	"net/url"
 	"os"
 	"sync"
@@ -33,7 +31,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	storage "github.com/Azure/azure-sdk-for-go/arm/storage"
 	azstorage "github.com/Azure/azure-sdk-for-go/storage"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/glog"
 	"github.com/rubiojr/go-vhd/vhd"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
@@ -41,7 +41,7 @@ import (
 
 type storageAccountState struct {
 	name                    string
-	saType                  string
+	saType                  storage.SkuName
 	key                     string
 	diskCount               int32
 	isValidating            int32
@@ -264,7 +264,7 @@ func (c *BlobDiskController) DetachBlobDisk(nodeName string, hasheddiskURI strin
 }
 
 //CreateBlobDisk : create a blob disk in a node
-func (c *BlobDiskController) CreateBlobDisk(dataDiskName string, storageAccountType string, sizeGB int, forceStandAlone bool) (string, error) {
+func (c *BlobDiskController) CreateBlobDisk(dataDiskName string, storageAccountType storage.SkuName, sizeGB int, forceStandAlone bool) (string, error) {
 	glog.V(4).Infof("azureDisk - creating blob data disk named:%s on StorageAccountType:%s StandAlone:%v", dataDiskName, storageAccountType, forceStandAlone)
 
 	var storageAccountName = ""
@@ -392,7 +392,7 @@ func (c *BlobDiskController) diskHasNoLease(diskURI string) (bool, error) {
 	return true, nil
 }
 
-// Init tries best effort to ensure that 2 accounts standard/premium were craeted
+// Init tries best effort to ensure that 2 accounts standard/premium were created
 // to be used by shared blob disks. This to increase the speed pvc provisioning (in most of cases)
 func (c *BlobDiskController) init() error {
 	if !c.shouldInit() {
@@ -412,9 +412,9 @@ func (c *BlobDiskController) init() error {
 		counter := 1
 		for counter <= storageAccountsCountInit {
 
-			accountType := "premium_lrs"
+			accountType := storage.PremiumLRS
 			if n := math.Mod(float64(counter), 2); n == 0 {
-				accountType = "standard_lrs"
+				accountType = storage.StandardLRS
 			}
 
 			// We don't really care if these calls failed
@@ -463,62 +463,23 @@ func (c *BlobDiskController) getStorageAccountKey(SAName string) (string, error)
 	if account, exists := c.accounts[SAName]; exists && account.key != "" {
 		return c.accounts[SAName].key, nil
 	}
-
-	uri := fmt.Sprintf(storageAccountEndPointTemplate,
-		c.common.managementEndpoint,
-		c.common.subscriptionID,
-		c.common.resourceGroup,
-		SAName+"/listkeys")
-
-	client := &http.Client{}
-	r, err := http.NewRequest("POST", uri, nil)
+	listKeysResult, err := c.common.cloud.StorageAccountClient.ListKeys(c.common.resourceGroup, SAName)
 	if err != nil {
 		return "", err
 	}
-
-	token, err := c.common.getToken()
-
-	if err != nil {
-		return "", err
+	if listKeysResult.Keys == nil {
+		return "", fmt.Errorf("azureDisk - empty listKeysResult in storage account:%s keys", SAName)
 	}
-
-	r.Header.Add("Authorization", "Bearer "+token)
-
-	resp, err := client.Do(r)
-	if err != nil || resp.StatusCode != 200 {
-		newError := getRestError("GetStorageAccountKeys", err, 200, resp.StatusCode, resp.Body)
-		return "", newError
-	}
-
-	defer resp.Body.Close()
-
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-
-	if err != nil {
-		return "", err
-	}
-
-	var payload interface{}
-
-	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
-		return "", err
-	}
-
-	fragment := payload.(map[string]interface{})
-	keys := fragment["keys"].([]interface{})
-	for _, v := range keys {
-		key := v.(map[string]interface{})
-
-		if key["keyName"].(string) == "key1" {
-			accountKey := key["value"].(string)
+	for _, v := range *listKeysResult.Keys {
+		if v.Value != nil && *v.Value == "key1" {
 			if _, ok := c.accounts[SAName]; !ok {
 				glog.Warningf("azureDisk - account %s was not cached while getting keys", SAName)
-				return accountKey, nil
+				return *v.Value, nil
 			}
-
-			c.accounts[SAName].key = key["value"].(string)
-			return c.accounts[SAName].key, nil
 		}
+
+		c.accounts[SAName].key = *v.Value
+		return c.accounts[SAName].key, nil
 	}
 
 	return "", fmt.Errorf("couldn't find key named key1 in storage account:%s keys", SAName)
@@ -542,8 +503,6 @@ func (c *BlobDiskController) getBlobSvcClient(SAName string) (azstorage.BlobStor
 }
 
 func (c *BlobDiskController) ensureDefaultContainer(storageAccountName string) error {
-	var bExist bool
-	var provisionState string
 	var err error
 	var blobSvc azstorage.BlobStorageClient
 
@@ -554,7 +513,7 @@ func (c *BlobDiskController) ensureDefaultContainer(storageAccountName string) e
 	}
 
 	// not cached, check existance and readiness
-	bExist, provisionState, _ = c.getStorageAccount(storageAccountName)
+	bExist, provisionState, _ := c.getStorageAccountState(storageAccountName)
 
 	// account does not exist
 	if !bExist {
@@ -562,7 +521,7 @@ func (c *BlobDiskController) ensureDefaultContainer(storageAccountName string) e
 	}
 
 	// account exists but not ready yet
-	if provisionState != "Succeeded" {
+	if provisionState != storage.Succeeded {
 		// we don't want many attempts to validate the account readiness
 		// here hence we are locking
 		counter := 1
@@ -586,14 +545,14 @@ func (c *BlobDiskController) ensureDefaultContainer(storageAccountName string) e
 		}
 
 		err = kwait.ExponentialBackoff(defaultBackOff, func() (bool, error) {
-			_, provisionState, err := c.getStorageAccount(storageAccountName)
+			_, provisionState, err := c.getStorageAccountState(storageAccountName)
 
 			if err != nil {
 				glog.V(4).Infof("azureDisk - GetStorageAccount:%s err %s", storageAccountName, err.Error())
 				return false, err
 			}
 
-			if provisionState == "Succeeded" {
+			if provisionState == storage.Succeeded {
 				return true, nil
 			}
 
@@ -668,73 +627,39 @@ func (c *BlobDiskController) shouldInit() bool {
 }
 
 func (c *BlobDiskController) getAllStorageAccounts() (map[string]*storageAccountState, error) {
-	uri := fmt.Sprintf(storageAccountEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionID, c.common.resourceGroup, "")
-	client := &http.Client{}
-	r, err := http.NewRequest("GET", uri, nil)
-
+	accountListResult, err := c.common.cloud.StorageAccountClient.List()
 	if err != nil {
 		return nil, err
 	}
-
-	token, err := c.common.getToken()
-	if err != nil {
-		return nil, err
+	if accountListResult.Value == nil {
+		return nil, fmt.Errorf("azureDisk - empty accountListResult")
 	}
-
-	r.Header.Add("Authorization", "Bearer "+token)
-
-	resp, err := client.Do(r)
-
-	if err != nil || resp.StatusCode != 200 {
-		newError := getRestError("GetAllStorageAccounts", err, 200, resp.StatusCode, resp.Body)
-		glog.Infof(newError.Error())
-		return nil, newError
-	}
-
-	defer resp.Body.Close()
-
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-
-	if err != nil {
-		return nil, err
-	}
-
-	var payload interface{}
 
 	accounts := make(map[string]*storageAccountState)
-	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
-		return nil, err
-	}
-
-	fragment := payload.(map[string]interface{})
-	value := fragment["value"].([]interface{})
-
-	for _, entry := range value {
-		sa := entry.(map[string]interface{})
-		name := sa["name"].(string)
-
-		if strings.Index(name, storageAccountNameMatch) != 0 {
+	for _, v := range *accountListResult.Value {
+		if strings.Index(*v.Name, storageAccountNameMatch) != 0 {
 			continue
 		}
-
-		glog.Infof("azureDisk - identified account %s as part of shared PVC accounts", name)
-		sku := sa["sku"].(map[string]interface{})
-		skuName := sku["name"].(string)
+		if v.Name == nil || v.Sku == nil {
+			glog.Infof("azureDisk - accountListResult Name or Sku is nil")
+			continue
+		}
+		glog.Infof("azureDisk - identified account %s as part of shared PVC accounts", *v.Name)
 
 		sastate := &storageAccountState{
-			name:      name,
-			saType:    strings.ToLower(skuName),
+			name:      *v.Name,
+			saType:    (*v.Sku).Name,
 			diskCount: -1,
 		}
 
-		accounts[name] = sastate
+		accounts[*v.Name] = sastate
 	}
 
 	return accounts, nil
 }
 
-func (c *BlobDiskController) createStorageAccount(storageAccountName string, storageAccountType string, checkMaxAccounts bool) error {
-	bExist, _, _ := c.getStorageAccount(storageAccountName)
+func (c *BlobDiskController) createStorageAccount(storageAccountName string, storageAccountType storage.SkuName, checkMaxAccounts bool) error {
+	bExist, _, _ := c.getStorageAccountState(storageAccountName)
 	if bExist {
 		newAccountState := &storageAccountState{
 			diskCount: -1,
@@ -750,44 +675,19 @@ func (c *BlobDiskController) createStorageAccount(storageAccountName string, sto
 			return fmt.Errorf("azureDisk - can not create new storage account, current storage accounts count:%v Max is:%v", len(c.accounts), maxStorageAccounts)
 		}
 
-		glog.V(2).Infof("azureDisk - Creating storage account %s type %s \n", storageAccountName, storageAccountType)
+		glog.V(2).Infof("azureDisk - Creating storage account %s type %s \n", storageAccountName, string(storageAccountType))
 
-		sPayload := `{  "location" : "%s", 
-                  "tags" : {"created-by" : "azure-dd"} , 
-                  "sku": {"name" : "%s"}, 
-                  "kind" : "Storage"  
-              }`
+		tag := "azure-dd"
+		cp := storage.AccountCreateParameters{
+			Sku:      &storage.Sku{Name: storageAccountType},
+			Tags:     &map[string]*string{"created-by": &tag},
+			Location: to.StringPtr(c.common.location)}
+		cancel := make(chan struct{})
 
-		sPayload = fmt.Sprintf(sPayload, c.common.location, storageAccountType)
-		uri := fmt.Sprintf(storageAccountEndPointTemplate,
-			c.common.managementEndpoint,
-			c.common.subscriptionID,
-			c.common.resourceGroup,
-			storageAccountName)
-
-		client := &http.Client{}
-		content := bytes.NewBufferString(sPayload)
-		r, err := http.NewRequest("PUT", uri, content)
+		_, err := c.common.cloud.StorageAccountClient.Create(c.common.resourceGroup, storageAccountName, cp, cancel)
 		if err != nil {
-			return err
+			return fmt.Errorf(fmt.Sprintf("Create Storage Account: %s, error: %s", storageAccountName, err))
 		}
-
-		token, err := c.common.getToken()
-
-		if err != nil {
-			return err
-		}
-
-		r.Header.Add("Content-Type", "application/json")
-		r.Header.Add("Authorization", "Bearer "+token)
-
-		resp, err := client.Do(r)
-
-		if err != nil || resp.StatusCode != 202 {
-			defer resp.Body.Close()
-			return getRestError(fmt.Sprintf("Create Storage Account: %s", storageAccountName), err, 200, resp.StatusCode, resp.Body)
-		}
-		defer resp.Body.Close()
 
 		newAccountState := &storageAccountState{
 			diskCount: -1,
@@ -812,7 +712,7 @@ func (c *BlobDiskController) createStorageAccount(storageAccountName string, sto
 }
 
 // finds a new suitable storageAccount for this disk
-func (c *BlobDiskController) findSANameForDisk(storageAccountType string) (string, error) {
+func (c *BlobDiskController) findSANameForDisk(storageAccountType storage.SkuName) (string, error) {
 	maxDiskCount := maxDisksPerStorageAccounts
 	SAName := ""
 	totalDiskCounts := 0
@@ -904,30 +804,9 @@ func (c *BlobDiskController) getNextAccountNum() int {
 }
 
 func (c *BlobDiskController) deleteStorageAccount(storageAccountName string) error {
-	uri := fmt.Sprintf(storageAccountEndPointTemplate,
-		c.common.managementEndpoint,
-		c.common.subscriptionID,
-		c.common.resourceGroup,
-		storageAccountName)
-
-	client := &http.Client{}
-	r, err := http.NewRequest("DELETE", uri, nil)
+	resp, err := c.common.cloud.StorageAccountClient.Delete(c.common.resourceGroup, storageAccountName)
 	if err != nil {
-		return err
-	}
-
-	token, err := c.common.getToken()
-
-	if err != nil {
-		return err
-	}
-
-	r.Header.Add("Authorization", "Bearer "+token)
-
-	resp, err := client.Do(r)
-	if err != nil || resp.StatusCode != 200 {
-		newError := getRestError("DeleteStorageAccount", err, 200, resp.StatusCode, resp.Body)
-		return newError
+		return fmt.Errorf("azureDisk - Delete of storage account '%s' failed with status %s\n...%v\n", storageAccountName, resp.Status, err)
 	}
 
 	c.removeAccountState(storageAccountName)
@@ -937,66 +816,12 @@ func (c *BlobDiskController) deleteStorageAccount(storageAccountName string) err
 }
 
 //Gets storage account exist, provisionStatus, Error if any
-func (c *BlobDiskController) getStorageAccount(storageAccountName string) (bool, string, error) {
-	// should be get or create storage accounts and should return keys (from cache)
-	uri := fmt.Sprintf(storageAccountEndPointTemplate,
-		c.common.managementEndpoint,
-		c.common.subscriptionID,
-		c.common.resourceGroup,
-		storageAccountName)
-
-	client := &http.Client{}
-	r, err := http.NewRequest("GET", uri, nil)
+func (c *BlobDiskController) getStorageAccountState(storageAccountName string) (bool, storage.ProvisioningState, error) {
+	account, err := c.common.cloud.StorageAccountClient.GetProperties(c.common.resourceGroup, storageAccountName)
 	if err != nil {
 		return false, "", err
 	}
-
-	token, err := c.common.getToken()
-
-	if err != nil {
-		return false, "", err
-	}
-
-	r.Header.Add("Content-Type", "application/json")
-	r.Header.Add("Authorization", "Bearer "+token)
-
-	resp, err := client.Do(r)
-
-	if err != nil || resp.StatusCode != 200 {
-		defer resp.Body.Close()
-		if resp.StatusCode == 404 {
-			// we are ok the account does not exist
-			return false, "", nil
-		}
-
-		glog.Infof("++ GetStorageAccount Status %v ", resp.StatusCode)
-		glog.Infof("GetStorageAccount:%s failed with error %s", storageAccountName, err.Error())
-		return false, "", getRestError(fmt.Sprintf("GetStorageAccount: %s", storageAccountName), err, 200, resp.StatusCode, resp.Body)
-	}
-	defer resp.Body.Close()
-
-	// extract data
-
-	var payload interface{}
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-
-	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
-		return false, "", err
-	}
-
-	fragment, ok := payload.(map[string]interface{})
-	if !ok {
-		return false, "", fmt.Errorf("convert payload to map error")
-	}
-	props, ok := fragment["properties"].(map[string]interface{})
-	if !ok {
-		return false, "", fmt.Errorf("convert payload(properties) to map error")
-	}
-	provisionState, ok := props["provisioningState"].(string)
-	if !ok {
-		return false, "", fmt.Errorf("convert payload(provisioningState) to map error")
-	}
-	return true, provisionState, nil
+	return true, account.AccountProperties.ProvisioningState, nil
 }
 
 func (c *BlobDiskController) addAccountState(key string, state *storageAccountState) {

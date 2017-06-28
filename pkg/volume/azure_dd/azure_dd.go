@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 
+	storage "github.com/Azure/azure-sdk-for-go/arm/storage"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure"
@@ -29,13 +30,13 @@ import (
 
 // interface exposed by the cloud provider implementing Disk functionlity
 type DiskController interface {
-	CreateBlobDisk(dataDiskName string, storageAccountType string, sizeGB int, forceStandAlone bool) (string, error)
+	CreateBlobDisk(dataDiskName string, storageAccountType storage.SkuName, sizeGB int, forceStandAlone bool) (string, error)
 	DeleteBlobDisk(diskUri string, wasForced bool) error
 
 	AttachBlobDisk(nodeName string, diskUri string, cacheMode string) (int, error)
 	DetachBlobDisk(nodeName string, hashedDiskUri string) error
 
-	CreateManagedDisk(diskName string, storageAccountType string, sizeGB int, tags map[string]string) (string, error)
+	CreateManagedDisk(diskName string, storageAccountType storage.SkuName, sizeGB int, tags map[string]string) (string, error)
 	DeleteManagedDisk(diskUri string) error
 
 	AttachManagedDisk(nodeName string, diskUri string, cacheMode string) (int, error)
