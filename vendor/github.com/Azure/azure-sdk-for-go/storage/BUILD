@@ -10,13 +10,17 @@ load(
 go_library(
     name = "go_default_library",
     srcs = [
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
         "appendblob.go",
+=======
+>>>>>>> fix godeps issue and change azure_file code due to api change
         "authorization.go",
         "blob.go",
         "blobsasuri.go",
         "blobserviceclient.go",
         "blockblob.go",
         "client.go",
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
         "container.go",
         "copyblob.go",
         "directory.go",
@@ -32,6 +36,14 @@ go_library(
         "share.go",
         "storagepolicy.go",
         "storageservice.go",
+=======
+        "directory.go",
+        "file.go",
+        "fileserviceclient.go",
+        "queue.go",
+        "share.go",
+        "storagepolicy.go",
+>>>>>>> fix godeps issue and change azure_file code due to api change
         "table.go",
         "table_batch.go",
         "tableserviceclient.go",

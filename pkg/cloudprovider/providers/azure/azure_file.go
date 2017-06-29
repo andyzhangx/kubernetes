@@ -59,7 +59,7 @@ func (az *Cloud) deleteFileShare(accountName, accountKey, name string) error {
 		share := fileClient.GetShareReference(name)
 		return share.Delete(nil)
 	}
-	return err
+	return nil
 }
 
 func (az *Cloud) getFileSvcClient(accountName, accountKey string) (*azs.FileServiceClient, error) {

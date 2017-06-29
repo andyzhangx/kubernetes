@@ -25,9 +25,14 @@ type DirectoryProperties struct {
 // ListDirsAndFilesParameters defines the set of customizable parameters to
 // make a List Files and Directories call.
 //
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/List-Directories-and-Files
 type ListDirsAndFilesParameters struct {
 	Prefix     string
+=======
+// See https://msdn.microsoft.com/en-us/library/azure/dn166980.aspx
+type ListDirsAndFilesParameters struct {
+>>>>>>> fix godeps issue and change azure_file code due to api change
 	Marker     string
 	MaxResults uint
 	Timeout    uint
@@ -36,7 +41,11 @@ type ListDirsAndFilesParameters struct {
 // DirsAndFilesListResponse contains the response fields from
 // a List Files and Directories call.
 //
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/List-Directories-and-Files
+=======
+// See https://msdn.microsoft.com/en-us/library/azure/dn166980.aspx
+>>>>>>> fix godeps issue and change azure_file code due to api change
 type DirsAndFilesListResponse struct {
 	XMLName     xml.Name    `xml:"EnumerationResults"`
 	Xmlns       string      `xml:"xmlns,attr"`
@@ -61,15 +70,24 @@ func (d *Directory) buildPath() string {
 // Create this directory in the associated share.
 // If a directory with the same name already exists, the operation fails.
 //
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/Create-Directory
 func (d *Directory) Create(options *FileRequestOptions) error {
+=======
+// See https://msdn.microsoft.com/en-us/library/azure/dn166993.aspx
+func (d *Directory) Create() error {
+>>>>>>> fix godeps issue and change azure_file code due to api change
 	// if this is the root directory exit early
 	if d.parent == nil {
 		return nil
 	}
 
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	params := prepareOptions(options)
 	headers, err := d.fsc.createResource(d.buildPath(), resourceDirectory, params, mergeMDIntoExtraHeaders(d.Metadata, nil), []int{http.StatusCreated})
+=======
+	headers, err := d.fsc.createResource(d.buildPath(), resourceDirectory, mergeMDIntoExtraHeaders(d.Metadata, nil))
+>>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return err
 	}
@@ -82,24 +100,39 @@ func (d *Directory) Create(options *FileRequestOptions) error {
 // directory does not exists. Returns true if the directory is newly created or
 // false if the directory already exists.
 //
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/Create-Directory
 func (d *Directory) CreateIfNotExists(options *FileRequestOptions) (bool, error) {
+=======
+// See https://msdn.microsoft.com/en-us/library/azure/dn166993.aspx
+func (d *Directory) CreateIfNotExists() (bool, error) {
+>>>>>>> fix godeps issue and change azure_file code due to api change
 	// if this is the root directory exit early
 	if d.parent == nil {
 		return false, nil
 	}
 
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	params := prepareOptions(options)
 	resp, err := d.fsc.createResourceNoClose(d.buildPath(), resourceDirectory, params, nil)
 	if resp != nil {
 		defer readAndCloseBody(resp.body)
+=======
+	resp, err := d.fsc.createResourceNoClose(d.buildPath(), resourceDirectory, nil)
+	if resp != nil {
+		defer resp.body.Close()
+>>>>>>> fix godeps issue and change azure_file code due to api change
 		if resp.statusCode == http.StatusCreated || resp.statusCode == http.StatusConflict {
 			if resp.statusCode == http.StatusCreated {
 				d.updateEtagAndLastModified(resp.headers)
 				return true, nil
 			}
 
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 			return false, d.FetchAttributes(nil)
+=======
+			return false, d.FetchAttributes()
+>>>>>>> fix godeps issue and change azure_file code due to api change
 		}
 	}
 
@@ -109,18 +142,32 @@ func (d *Directory) CreateIfNotExists(options *FileRequestOptions) (bool, error)
 // Delete removes this directory.  It must be empty in order to be deleted.
 // If the directory does not exist the operation fails.
 //
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/Delete-Directory
 func (d *Directory) Delete(options *FileRequestOptions) error {
 	return d.fsc.deleteResource(d.buildPath(), resourceDirectory, options)
+=======
+// See https://msdn.microsoft.com/en-us/library/azure/dn166969.aspx
+func (d *Directory) Delete() error {
+	return d.fsc.deleteResource(d.buildPath(), resourceDirectory)
+>>>>>>> fix godeps issue and change azure_file code due to api change
 }
 
 // DeleteIfExists removes this directory if it exists.
 //
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/Delete-Directory
 func (d *Directory) DeleteIfExists(options *FileRequestOptions) (bool, error) {
 	resp, err := d.fsc.deleteResourceNoClose(d.buildPath(), resourceDirectory, options)
 	if resp != nil {
 		defer readAndCloseBody(resp.body)
+=======
+// See https://msdn.microsoft.com/en-us/library/azure/dn166969.aspx
+func (d *Directory) DeleteIfExists() (bool, error) {
+	resp, err := d.fsc.deleteResourceNoClose(d.buildPath(), resourceDirectory)
+	if resp != nil {
+		defer resp.body.Close()
+>>>>>>> fix godeps issue and change azure_file code due to api change
 		if resp.statusCode == http.StatusAccepted || resp.statusCode == http.StatusNotFound {
 			return resp.statusCode == http.StatusAccepted, nil
 		}
@@ -138,10 +185,15 @@ func (d *Directory) Exists() (bool, error) {
 }
 
 // FetchAttributes retrieves metadata for this directory.
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 //  See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/get-directory-properties
 func (d *Directory) FetchAttributes(options *FileRequestOptions) error {
 	params := prepareOptions(options)
 	headers, err := d.fsc.getResourceHeaders(d.buildPath(), compNone, resourceDirectory, params, http.MethodHead)
+=======
+func (d *Directory) FetchAttributes() error {
+	headers, err := d.fsc.getResourceHeaders(d.buildPath(), compNone, resourceDirectory, http.MethodHead)
+>>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return err
 	}
@@ -175,7 +227,11 @@ func (d *Directory) GetFileReference(name string) *File {
 // ListDirsAndFiles returns a list of files and directories under this directory.
 // It also contains a pagination token and other response details.
 //
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/List-Directories-and-Files
+=======
+// See https://msdn.microsoft.com/en-us/library/azure/dn166980.aspx
+>>>>>>> fix godeps issue and change azure_file code due to api change
 func (d *Directory) ListDirsAndFiles(params ListDirsAndFilesParameters) (*DirsAndFilesListResponse, error) {
 	q := mergeParams(params.getParameters(), getURLInitValues(compList, resourceDirectory))
 
@@ -197,9 +253,15 @@ func (d *Directory) ListDirsAndFiles(params ListDirsAndFilesParameters) (*DirsAn
 // are case-insensitive so case munging should not matter to other
 // applications either.
 //
+<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/Set-Directory-Metadata
 func (d *Directory) SetMetadata(options *FileRequestOptions) error {
 	headers, err := d.fsc.setResourceHeaders(d.buildPath(), compMetadata, resourceDirectory, mergeMDIntoExtraHeaders(d.Metadata, nil), options)
+=======
+// See https://msdn.microsoft.com/en-us/library/azure/mt427370.aspx
+func (d *Directory) SetMetadata() error {
+	headers, err := d.fsc.setResourceHeaders(d.buildPath(), compMetadata, resourceDirectory, mergeMDIntoExtraHeaders(d.Metadata, nil))
+>>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return err
 	}
