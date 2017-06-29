@@ -294,7 +294,6 @@ func (c *BlobDiskController) CreateBlobDisk(dataDiskName string, storageAccountT
 	}
 
 	tags := make(map[string]string)
-
 	tags["created-by"] = "k8s-azure-DataDisk"
 
 	glog.V(4).Infof("azureDisk - creating page blob for data disk %s\n", dataDiskName)

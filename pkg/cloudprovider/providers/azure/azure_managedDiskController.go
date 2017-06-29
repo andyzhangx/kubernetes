@@ -23,10 +23,10 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/Azure/azure-sdk-for-go/arm/disk"
 	storage "github.com/Azure/azure-sdk-for-go/arm/storage"
 	"github.com/golang/glog"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
@@ -217,49 +217,35 @@ func (c *ManagedDiskController) DetachManagedDisk(nodeName string, hashedDiskID 
 func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccountType storage.SkuName, sizeGB int, tags map[string]string) (string, error) {
 	glog.V(4).Infof("azureDisk - creating new managed Name:%s StorageAccountType:%s Size:%v", diskName, storageAccountType, sizeGB)
 
-	if tags == nil {
-		tags = make(map[string]string)
+	newTags := make(map[string]*string)
+	azureDDTag := "kubernetes-azure-dd"
+	newTags["created-by"] = &azureDDTag
+
+	// insert original tags to newTags
+	if tags != nil {
+		for k, v := range tags {
+			// Azure won't allow / (forward slash) in tags
+			newKey := strings.Replace(k, "/", "-", -1)
+			newValue := strings.Replace(v, "/", "-", -1)
+			newTags[newKey] = &newValue
+		}
 	}
-	tags["created-by"] = "kubernetes/azure-dd"
 
-	tagsPayload := new(bytes.Buffer)
-	e := json.NewEncoder(tagsPayload).Encode(tags)
-
-	if e != nil {
-		glog.Infof("azureDisk - failed to encode tags for Azure Disk %s error: %s", diskName, e)
-		return "", e
-	}
-
-	tagsString := tagsPayload.String()
-
-	// Azure won't allow / (forward slash) in tags
-	tagsString = strings.Replace(tagsString, "/", "-", -1)
-
-	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionID, c.common.resourceGroup, diskName, apiversion)
-
-	requestData := `{ "tags" : ` + tagsString + `,   "location" : "` + c.common.location + `", "properties":  { "creationData":  {"createOption": "Empty" }, "accountType"  : "` + string(storageAccountType) + `", "diskSizeGB": "` + strconv.Itoa(sizeGB) + `"  } }`
-
-	client := &http.Client{}
-	content := bytes.NewBufferString(requestData)
-	r, err := http.NewRequest("PUT", uri, content)
+	diskSizeGB := int32(sizeGB)
+	creationData := disk.CreationData{CreateOption: disk.Empty}
+	properties := disk.Properties{
+		AccountType:  disk.StorageAccountTypes(storageAccountType),
+		DiskSizeGB:   &diskSizeGB,
+		CreationData: &creationData}
+	model := disk.Model{
+		Location:   &c.common.location,
+		Tags:       &newTags,
+		Properties: &properties}
+	cancel := make(chan struct{})
+	_, err := c.common.cloud.DisksClient.CreateOrUpdate(c.common.resourceGroup, diskName, model, cancel)
 	if err != nil {
 		return "", err
 	}
-
-	token, err := c.common.getToken()
-	if err != nil {
-		return "", err
-	}
-	r.Header.Add("Content-Type", "application/json")
-	r.Header.Add("Authorization", "Bearer "+token)
-
-	resp, err := client.Do(r)
-
-	if err != nil || resp.StatusCode != 202 {
-		defer resp.Body.Close()
-		return "", getRestError(fmt.Sprintf("Create Managed Disk: %s", diskName), err, 202, resp.StatusCode, resp.Body)
-	}
-	defer resp.Body.Close()
 
 	diskID := fmt.Sprintf(diskIDTemplate, c.common.subscriptionID, c.common.resourceGroup, diskName)
 
@@ -289,28 +275,11 @@ func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccoun
 //DeleteManagedDisk : delete managed disk
 func (c *ManagedDiskController) DeleteManagedDisk(diskURI string) error {
 	diskName := path.Base(diskURI)
-	uri := fmt.Sprintf(diskEndPointTemplate, c.common.managementEndpoint, c.common.subscriptionID, c.common.resourceGroup, diskName, apiversion)
-
-	client := &http.Client{}
-	r, err := http.NewRequest("DELETE", uri, nil)
-	if err != nil {
-		return nil
-	}
-
-	token, err := c.common.getToken()
+	cancel := make(chan struct{})
+	_, err := c.common.cloud.DisksClient.Delete(c.common.resourceGroup, diskName, cancel)
 	if err != nil {
 		return err
 	}
-
-	r.Header.Add("Authorization", "Bearer "+token)
-
-	resp, err := client.Do(r)
-
-	if err != nil || resp.StatusCode != 202 {
-		return getRestError(fmt.Sprintf("Delete Managed Disk: %s", diskURI), err, 202, resp.StatusCode, resp.Body)
-	}
-
-	defer resp.Body.Close()
 	// We don't need poll here, k8s will immediatly stop referencing the disk
 	// the disk will be evantually deleted - cleanly - by ARM
 
