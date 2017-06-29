@@ -29,8 +29,10 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 
+	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	"github.com/golang/glog"
 )
 
@@ -103,51 +105,32 @@ func (c *controllerCommon) isManagedArmVM(storageProfile map[string]interface{})
 	return false
 }
 
-func (c *controllerCommon) GetAttachedDisks(nodeName string) ([]string, error) {
-	var disks []string
-	var vmData interface{}
-	vm, err := c.getArmVM(nodeName)
-
-	if err != nil {
-		return nil, err
+// DisksAreAttached checks if a list of volumes are attached to the node with the specified NodeName
+func (c *controllerCommon) DisksAreAttached(diskNames []string, nodeName types.NodeName) (map[string]bool, error) {
+	attached := make(map[string]bool)
+	for _, diskName := range diskNames {
+		attached[diskName] = false
+	}
+	vm, exists, err := c.cloud.getVirtualMachine(nodeName)
+	if !exists {
+		// if host doesn't exist, no need to detach
+		glog.Warningf("Cannot find node %q, DisksAreAttached will assume disks %v are not attached to it.",
+			nodeName, diskNames)
+		return attached, nil
+	} else if err != nil {
+		return attached, err
 	}
 
-	if err := json.Unmarshal(vm, &vmData); err != nil {
-		return disks, err
-	}
-
-	fragment, ok := vmData.(map[string]interface{})
-	if !ok {
-		return disks, fmt.Errorf("convert vmData to map error")
-	}
-
-	dataDisks, _, _, err := ExtractVMData(fragment)
-	if err != nil {
-		return disks, err
-	}
-
-	// we silently ignore, if VM does not have the disk attached
-	for _, v := range dataDisks {
-		d := v.(map[string]interface{})
-		if _, ok := d["vhd"]; ok {
-			// this is a blob disk
-			vhdInfo, ok := d["vhd"].(map[string]interface{})
-			if !ok {
-				return disks, fmt.Errorf("convert vmData(vhd) to map error")
+	disks := *vm.StorageProfile.DataDisks
+	for _, disk := range disks {
+		for _, diskName := range diskNames {
+			if disk.Name != nil && diskName != "" && *disk.Name == diskName {
+				attached[diskName] = true
 			}
-			vhdURI := vhdInfo["uri"].(string)
-			disks = append(disks, vhdURI)
-		} else {
-			// this is managed disk
-			managedDiskInfo, ok := d["managedDisk"].(map[string]interface{})
-			if !ok {
-				return disks, fmt.Errorf("convert vmData(managedDisk) to map error")
-			}
-			managedDiskID := managedDiskInfo["id"].(string)
-			disks = append(disks, managedDiskID)
 		}
 	}
-	return disks, nil
+
+	return attached, nil
 }
 
 //IsDiskAttached : if disk attached returns bool + lun attached to
@@ -231,6 +214,25 @@ func (c *controllerCommon) updateArmVM(armVMName string, buffer *bytes.Buffer) e
 		return getRestError(fmt.Sprintf("Update ARM VM: %s", armVMName), err, 200, resp.StatusCode, resp.Body)
 	}
 	return nil
+}
+
+func (c *controllerCommon) getVirtualMachine(nodeName types.NodeName) (vm compute.VirtualMachine, exists bool, err error) {
+	var realErr error
+
+	vmName := string(nodeName)
+	c.cloud.operationPollRateLimiter.Accept()
+	vm, err = c.cloud.VirtualMachinesClient.Get(c.resourceGroup, vmName, "")
+
+	exists, realErr = checkResourceExistsFromError(err)
+	if realErr != nil {
+		return vm, false, realErr
+	}
+
+	if !exists {
+		return vm, false, nil
+	}
+
+	return vm, exists, err
 }
 
 // Gets ARM VM

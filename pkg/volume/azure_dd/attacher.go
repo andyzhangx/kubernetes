@@ -96,33 +96,42 @@ func (a *azureDiskAttacher) Attach(spec *volume.Spec, nodeName types.NodeName) (
 }
 
 func (a *azureDiskAttacher) VolumesAreAttached(specs []*volume.Spec, nodeName types.NodeName) (map[*volume.Spec]bool, error) {
+	volumesAttachedCheck := make(map[*volume.Spec]bool)
+	volumeSpecMap := make(map[string]*volume.Spec)
+	volumeIDList := []string{}
+	for _, spec := range specs {
+		volumeSource, err := getVolumeSource(spec)
+		if err != nil {
+			glog.Errorf("Error getting volume (%q) source : %v", spec.Name(), err)
+			continue
+		}
+
+		volumeIDList = append(volumeIDList, volumeSource.DiskName)
+		volumesAttachedCheck[spec] = true
+		volumeSpecMap[volumeSource.DiskName] = spec
+	}
+
 	diskController, err := getDiskController(a.plugin.host)
 	if err != nil {
 		return nil, err
 	}
-
-	attachedDisks, err := diskController.GetAttachedDisks(string(nodeName))
+	attachedResult, err := diskController.DisksAreAttached(volumeIDList, nodeName)
 	if err != nil {
-		return nil, err
+		// Log error and continue with attach
+		glog.Errorf(
+			"Error checking if volumes (%v) are attached to current node (%q). err=%v",
+			volumeIDList, nodeName, err)
+		return volumesAttachedCheck, err
 	}
 
-	specsMap := make(map[*volume.Spec]bool)
-
-	for _, s := range specs {
-		azureSpec, err := getVolumeSource(s)
-		if err != nil {
-			glog.Warningf("azureDisk - failed to get volume source for a spec during VolumesAreAttached, err: %s", err.Error())
-		}
-		for _, d := range attachedDisks {
-			attachedDisk := strings.ToLower(d)
-			specDisk := strings.ToLower(azureSpec.DataDiskURI)
-			if attachedDisk == specDisk {
-				specsMap[s] = true
-				break
-			}
+	for volumeID, attached := range attachedResult {
+		if !attached {
+			spec := volumeSpecMap[volumeID]
+			volumesAttachedCheck[spec] = false
+			glog.V(2).Infof("VolumesAreAttached: check volume %q (specName: %q) is no longer attached", volumeID, spec.Name())
 		}
 	}
-	return specsMap, nil
+	return volumesAttachedCheck, nil
 }
 
 func (a *azureDiskAttacher) WaitForAttach(spec *volume.Spec, devicePath string, timeout time.Duration) (string, error) {

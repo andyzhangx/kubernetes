@@ -43,7 +43,9 @@ type DiskController interface {
 	DetachManagedDisk(nodeName string, hashedDiskUri string) error
 
 	IsDiskAttached(hashedDiskUri, nodeName string, isManaged bool) (attached bool, lun int, err error)
-	GetAttachedDisks(nodeName string) ([]string, error)
+
+	// Check if a list of volumes are attached to the node with the specified NodeName
+	DisksAreAttached(diskNames []string, nodeName types.NodeName) (map[string]bool, error)
 }
 
 type azureDataDiskPlugin struct {
