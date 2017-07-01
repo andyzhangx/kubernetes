@@ -17,20 +17,14 @@ limitations under the License.
 package azure
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"hash/crc32"
-	"io"
-	"io/ioutil"
-	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubernetes/pkg/cloudprovider"
 
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	"github.com/golang/glog"
@@ -54,21 +48,17 @@ type armVMDataDisk struct {
 }
 
 const (
-	aadTokenEndPointPath string = "%s/oauth2/token/"
-	apiversion           string = "2016-04-30-preview"
-	diskEndPointTemplate string = "%ssubscriptions/%s/resourcegroups/%s/providers/microsoft.compute/disks/%s?api-version=%s"
-	vMEndPointTemplate   string = "%ssubscriptions/%s/resourcegroups/%s/providers/microsoft.compute/virtualmachines/%s?api-version=%s"
-	diskIDTemplate       string = "/subscriptions/%s/resourcegroups/%s/providers/microsoft.compute/disks/%s"
-	defaultDataDiskCount int    = 16 // which will allow you to work with most medium size VMs (if not found in map)
-
+	defaultDataDiskCount       int = 16 // which will allow you to work with most medium size VMs (if not found in map)
 	storageAccountNameTemplate     = "pvc%s"
-	storageAccountEndPointTemplate = "%ssubscriptions/%s/resourcegroups/%s/providers/microsoft.storage/storageaccounts/%s?api-version=2016-01-01"
 
 	// for limits check https://docs.microsoft.com/en-us/azure/azure-subscription-service-limits#storage-limits
 	maxStorageAccounts                     = 100 // max # is 200 (250 with special request). this allows 100 for everything else including stand alone disks
 	maxDisksPerStorageAccounts             = 60
 	storageAccountUtilizationBeforeGrowing = 0.5
 	storageAccountsCountInit               = 2 // When the plug-in is init-ed, 2 storage accounts will be created to allow fast pvc create/attach/mount
+
+	maxLUN         = 64 // max number of LUNs per VM
+	errLeaseFailed = "AcquireDiskLeaseFailed"
 )
 
 var defaultBackOff = kwait.Backoff{
@@ -97,12 +87,165 @@ type controllerCommon struct {
 	cloud                 *Cloud
 }
 
-func (c *controllerCommon) isManagedArmVM(storageProfile map[string]interface{}) bool {
-	osDisk := storageProfile["osDisk"].(map[string]interface{})
-	if _, ok := osDisk["managedDisk"]; ok {
-		return true
+// AttachDisk attaches a vhd to vm
+// the vhd must exist, can be identified by diskName, diskURI, and lun.
+func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI string, nodeName types.NodeName, lun int32, cachingMode compute.CachingTypes) error {
+	vm, exists, err := c.cloud.getVirtualMachine(nodeName)
+	if err != nil {
+		return err
+	} else if !exists {
+		return cloudprovider.InstanceNotFound
 	}
-	return false
+	disks := *vm.StorageProfile.DataDisks
+	if isManagedDisk {
+		disks = append(disks,
+			compute.DataDisk{
+				Name:         &diskName,
+				Lun:          &lun,
+				Caching:      cachingMode,
+				CreateOption: "attach",
+				ManagedDisk: &compute.ManagedDiskParameters{
+					ID: &diskURI,
+				},
+			})
+	} else {
+		disks = append(disks,
+			compute.DataDisk{
+				Name: &diskName,
+				Vhd: &compute.VirtualHardDisk{
+					URI: &diskURI,
+				},
+				Lun:          &lun,
+				Caching:      cachingMode,
+				CreateOption: "attach",
+			})
+	}
+
+	newVM := compute.VirtualMachine{
+		Location: vm.Location,
+		VirtualMachineProperties: &compute.VirtualMachineProperties{
+			StorageProfile: &compute.StorageProfile{
+				DataDisks: &disks,
+			},
+		},
+	}
+	vmName := mapNodeNameToVMName(nodeName)
+	glog.V(2).Infof("create(%s): vm(%s)", c.resourceGroup, vmName)
+	c.cloud.operationPollRateLimiter.Accept()
+	resp, err := c.cloud.VirtualMachinesClient.CreateOrUpdate(c.resourceGroup, vmName, newVM, nil)
+	if c.cloud.CloudProviderBackoff && shouldRetryAPIRequest(resp, err) {
+		glog.V(2).Infof("create(%s) backing off: vm(%s)", c.resourceGroup, vmName)
+		retryErr := c.cloud.CreateOrUpdateVMWithRetry(vmName, newVM)
+		if retryErr != nil {
+			err = retryErr
+			glog.V(2).Infof("create(%s) abort backoff: vm(%s)", c.resourceGroup, vmName)
+		}
+	}
+	if err != nil {
+		glog.Errorf("azure attach failed, err: %v", err)
+		detail := err.Error()
+		if strings.Contains(detail, errLeaseFailed) {
+			// if lease cannot be acquired, immediately detach the disk and return the original error
+			glog.Infof("failed to acquire disk lease, try detach")
+			c.cloud.DetachDiskByName(diskName, diskURI, nodeName)
+		}
+	} else {
+		glog.V(4).Infof("azure attach succeeded")
+	}
+	return err
+}
+
+// DetachDiskByName detaches a vhd from host
+// the vhd can be identified by diskName or diskURI
+func (c *controllerCommon) DetachDiskByName(diskName, diskURI string, nodeName types.NodeName) error {
+	vm, exists, err := c.cloud.getVirtualMachine(nodeName)
+	if err != nil || !exists {
+		// if host doesn't exist, no need to detach
+		glog.Warningf("cannot find node %s, skip detaching disk %s", nodeName, diskName)
+		return nil
+	}
+
+	disks := *vm.StorageProfile.DataDisks
+	for i, disk := range disks {
+		if (disk.Name != nil && diskName != "" && *disk.Name == diskName) ||
+			(disk.Vhd.URI != nil && diskURI != "" && *disk.Vhd.URI == diskURI) {
+			// found the disk
+			glog.V(4).Infof("detach disk: name %q uri %q", diskName, diskURI)
+			disks = append(disks[:i], disks[i+1:]...)
+			break
+		}
+	}
+	newVM := compute.VirtualMachine{
+		Location: vm.Location,
+		VirtualMachineProperties: &compute.VirtualMachineProperties{
+			StorageProfile: &compute.StorageProfile{
+				DataDisks: &disks,
+			},
+		},
+	}
+	vmName := mapNodeNameToVMName(nodeName)
+	glog.V(2).Infof("create(%s): vm(%s)", c.resourceGroup, vmName)
+	c.cloud.operationPollRateLimiter.Accept()
+	resp, err := c.cloud.VirtualMachinesClient.CreateOrUpdate(c.resourceGroup, vmName, newVM, nil)
+	if c.cloud.CloudProviderBackoff && shouldRetryAPIRequest(resp, err) {
+		glog.V(2).Infof("create(%s) backing off: vm(%s)", c.resourceGroup, vmName)
+		retryErr := c.cloud.CreateOrUpdateVMWithRetry(vmName, newVM)
+		if retryErr != nil {
+			err = retryErr
+			glog.V(2).Infof("create(%s) abort backoff: vm(%s)", c.cloud.ResourceGroup, vmName)
+		}
+	}
+	if err != nil {
+		glog.Errorf("azure disk detach failed, err: %v", err)
+	} else {
+		glog.V(4).Infof("azure disk detach succeeded")
+	}
+	return err
+}
+
+// GetDiskLun finds the lun on the host that the vhd is attached to, given a vhd's diskName and diskURI
+func (c *controllerCommon) GetDiskLun(diskName, diskURI string, nodeName types.NodeName) (int32, error) {
+	vm, exists, err := c.cloud.getVirtualMachine(nodeName)
+	if err != nil {
+		return -1, err
+	} else if !exists {
+		return -1, cloudprovider.InstanceNotFound
+	}
+	disks := *vm.StorageProfile.DataDisks
+	for _, disk := range disks {
+		if disk.Lun != nil && (disk.Name != nil && diskName != "" && *disk.Name == diskName) ||
+			(disk.Vhd != nil && disk.Vhd.URI != nil && diskURI != "" && *disk.Vhd.URI == diskURI) ||
+			(disk.ManagedDisk != nil && *disk.ManagedDisk.ID == diskURI) {
+			// found the disk
+			glog.V(4).Infof("find disk: lun %d name %q uri %q", *disk.Lun, diskName, diskURI)
+			return *disk.Lun, nil
+		}
+	}
+	return -1, fmt.Errorf("Cannot find Lun for disk %s", diskName)
+}
+
+// GetNextDiskLun searches all vhd attachment on the host and find unused lun
+// return -1 if all luns are used
+func (c *controllerCommon) GetNextDiskLun(nodeName types.NodeName) (int32, error) {
+	vm, exists, err := c.cloud.getVirtualMachine(nodeName)
+	if err != nil {
+		return -1, err
+	} else if !exists {
+		return -1, cloudprovider.InstanceNotFound
+	}
+	used := make([]bool, maxLUN)
+	disks := *vm.StorageProfile.DataDisks
+	for _, disk := range disks {
+		if disk.Lun != nil {
+			used[*disk.Lun] = true
+		}
+	}
+	for k, v := range used {
+		if !v {
+			return int32(k), nil
+		}
+	}
+	return -1, fmt.Errorf("All Luns are used")
 }
 
 // DisksAreAttached checks if a list of volumes are attached to the node with the specified NodeName
@@ -133,89 +276,6 @@ func (c *controllerCommon) DisksAreAttached(diskNames []string, nodeName types.N
 	return attached, nil
 }
 
-//IsDiskAttached : if disk attached returns bool + lun attached to
-func (c *controllerCommon) IsDiskAttached(hashedDiskURI, nodeName string, isManaged bool) (attached bool, lun int, err error) {
-	attached = false
-	lun = -1
-
-	var vmData interface{}
-
-	vm, err := c.getArmVM(nodeName)
-
-	if err != nil {
-		return attached, lun, err
-	}
-
-	if err := json.Unmarshal(vm, &vmData); err != nil {
-		return attached, lun, err
-	}
-
-	fragment, ok := vmData.(map[string]interface{})
-	if !ok {
-		return attached, lun, fmt.Errorf("convert vmData to map error")
-	}
-
-	dataDisks, _, _, err := ExtractVMData(fragment)
-	if err != nil {
-		return attached, lun, err
-	}
-
-	for _, v := range dataDisks {
-		d := v.(map[string]interface{})
-		if isManaged {
-			md, ok := d["managedDisk"].(map[string]interface{})
-			if !ok {
-				return attached, lun, fmt.Errorf("convert vmData(managedDisk) to map error")
-			}
-			currentDiskID := strings.ToLower(md["id"].(string))
-			hashedCurrentDiskID := MakeCRC32(currentDiskID)
-			if hashedCurrentDiskID == hashedDiskURI {
-				attached = true
-				lun = int(d["lun"].(float64))
-				break
-			}
-		} else {
-			blobDisk, ok := d["vhd"].(map[string]interface{})
-			if !ok {
-				return attached, lun, fmt.Errorf("convert vmData(vhd) to map error")
-			}
-			blobDiskURI := blobDisk["uri"].(string)
-			hashedBlobDiskURI := MakeCRC32(blobDiskURI)
-			if hashedBlobDiskURI == hashedDiskURI {
-				attached = true
-				lun = int(d["lun"].(float64))
-				break
-			}
-		}
-	}
-
-	return attached, lun, nil
-}
-
-// Updates an arm VM based on the payload
-func (c *controllerCommon) updateArmVM(armVMName string, buffer *bytes.Buffer) error {
-	uri := fmt.Sprintf(vMEndPointTemplate, c.managementEndpoint, c.subscriptionID, c.resourceGroup, armVMName, apiversion)
-	client := &http.Client{}
-	r, err := http.NewRequest("PUT", uri, buffer)
-	if err != nil {
-		return err
-	}
-
-	token, err := c.getToken()
-	if err != nil {
-		return err
-	}
-
-	r.Header.Add("Content-Type", "application/json")
-	r.Header.Add("Authorization", "Bearer "+token)
-	resp, err := client.Do(r)
-
-	if err != nil || resp.StatusCode != 200 {
-		return getRestError(fmt.Sprintf("Update ARM VM: %s", armVMName), err, 200, resp.StatusCode, resp.Body)
-	}
-	return nil
-}
-
 func (c *controllerCommon) getVirtualMachine(nodeName types.NodeName) (vm compute.VirtualMachine, exists bool, err error) {
 	var realErr error
 
@@ -233,169 +293,4 @@ func (c *controllerCommon) getVirtualMachine(nodeName types.NodeName) (vm comput
 	}
 
 	return vm, exists, err
-}
-
-// Gets ARM VM
-func (c *controllerCommon) getArmVM(armVMName string) ([]byte, error) {
-	uri := fmt.Sprintf(vMEndPointTemplate, c.managementEndpoint, c.subscriptionID, c.resourceGroup, armVMName, apiversion)
-	client := &http.Client{}
-	r, err := http.NewRequest("GET", uri, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	token, err := c.getToken()
-	if err != nil {
-		return nil, err
-	}
-
-	r.Header.Add("Authorization", "Bearer "+token)
-	resp, err := client.Do(r)
-	if err != nil {
-		return nil, err
-	}
-
-	defer resp.Body.Close()
-	if err != nil || resp.StatusCode != 200 {
-		return nil, getRestError(fmt.Sprintf("Get ARM VM: %s", armVMName), err, 200, resp.StatusCode, resp.Body)
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return body, nil
-}
-
-func (c *controllerCommon) getToken() (token string, err error) {
-	if c.aadToken != "" && time.Now().UTC().Sub(c.expiresOn).Seconds() <= 10 {
-		// token cached and is valid.
-		return c.aadToken, nil
-	}
-
-	apiURL := c.tokenEndPoint
-	resource := fmt.Sprintf(aadTokenEndPointPath, c.tenantID)
-	// create form urlencoded post data
-	formData := url.Values{}
-
-	formData.Add("grant_type", "client_credentials")
-	formData.Add("client_id", c.clientID)
-	formData.Add("client_secret", c.clientSecret)
-	formData.Add("resource", c.aadResourceEndPoint)
-
-	urlStr := ""
-	u := &url.URL{}
-	if u, err = url.ParseRequestURI(apiURL); err != nil {
-		return "", err
-	}
-
-	u.Path = resource
-	urlStr = fmt.Sprintf("%v", u)
-	client := &http.Client{}
-
-	r, err := http.NewRequest("POST", urlStr, bytes.NewBufferString(formData.Encode()))
-	if err != nil {
-		return "", err
-	}
-
-	// add headers
-	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	r.Header.Add("Content-Length", strconv.Itoa(len(formData.Encode())))
-	resp, err := client.Do(r)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	payload, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	c.aadToken, c.expiresOn, err = parseAADToken(payload)
-	return c.aadToken, err
-}
-
-func parseAADToken(payload []byte) (string, time.Time, error) {
-	var f interface{}
-	var sToken string
-	var expiresOn time.Time
-	var expiresSec int
-	var ok bool
-	var expires string
-
-	if err := json.Unmarshal(payload, &f); err != nil {
-		return "", expiresOn, err
-	}
-
-	fragment, ok := f.(map[string]interface{})
-	if !ok {
-		return "", expiresOn, fmt.Errorf("convert vmData to map error")
-	}
-	if sToken, ok = fragment["access_token"].(string); ok != true {
-		return "", expiresOn, fmt.Errorf("Disk controller (ARM Client) cannot parse AAD token - access_token field")
-	}
-	if expires, ok = fragment["expires_on"].(string); ok != true {
-		return "", expiresOn, fmt.Errorf("Disk controller (ARM Client) cannot parse AAD token - expires_on field")
-	}
-
-	expiresSec, _ = strconv.Atoi(expires)
-	// expires_on is seconds since 1970-01-01T0:0:0Z UTC
-	expiresOn = time1970.UTC().Add(time.Duration(expiresSec) * time.Second)
-
-	return sToken, expiresOn, nil
-}
-
-// Creats a slice  luns based on the VM size, used the static map declared on this package
-func getLunMapForVM(vmSize string) []bool {
-	count, ok := dataDisksPerVM[vmSize]
-	if !ok {
-		glog.Warningf("azureDisk - VM Size %s found no static lun count will use default which  %v", vmSize, defaultDataDiskCount)
-		count = defaultDataDiskCount
-	}
-
-	m := make([]bool, count)
-	return m
-}
-
-// finds an empty based on VM size and current attached disks
-func findEmptyLun(vmSize string, dataDisks []interface{}) (int, error) {
-	vmLuns := getLunMapForVM(vmSize)
-	selectedLun := -1
-
-	for _, v := range dataDisks {
-		current := v.(map[string]interface{})
-		lun := int(current["lun"].(float64))
-		vmLuns[lun] = true
-	}
-
-	//find first empty lun
-	for i, v := range vmLuns {
-		if v == false {
-			selectedLun = i
-			break
-		}
-	}
-
-	if selectedLun == -1 {
-		return selectedLun, fmt.Errorf("azureDisk - failed to find empty lun on VM type:%s total-luns-checked:%v", vmSize, len(vmLuns))
-	}
-
-	return selectedLun, nil
-}
-
-func getRestError(operation string, restError error, expectedStatus int, actualStatus int, body io.ReadCloser) error {
-	if restError != nil {
-		return fmt.Errorf("azureDisk - %s - Rest Error: %s", operation, restError)
-	}
-
-	bodystr := ""
-	if body != nil {
-		bodyBytes, _ := ioutil.ReadAll(body)
-		if bodyBytes != nil {
-			bodystr = string(bodyBytes)
-		}
-	}
-	return fmt.Errorf("azureDisk - %s - Rest Status Error:\n Expected: %v\n Got: %v\n ResponseBody:%s", operation, expectedStatus, actualStatus, bodystr)
 }

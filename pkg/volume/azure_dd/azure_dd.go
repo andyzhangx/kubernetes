@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	storage "github.com/Azure/azure-sdk-for-go/arm/storage"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -33,19 +34,21 @@ type DiskController interface {
 	CreateBlobDisk(dataDiskName string, storageAccountType storage.SkuName, sizeGB int, forceStandAlone bool) (string, error)
 	DeleteBlobDisk(diskUri string, wasForced bool) error
 
-	AttachBlobDisk(nodeName string, diskUri string, cacheMode string) (int, error)
-	DetachBlobDisk(nodeName string, hashedDiskUri string) error
-
 	CreateManagedDisk(diskName string, storageAccountType storage.SkuName, sizeGB int, tags map[string]string) (string, error)
-	DeleteManagedDisk(diskUri string) error
+	DeleteManagedDisk(diskURI string) error
 
-	AttachManagedDisk(nodeName string, diskUri string, cacheMode string) (int, error)
-	DetachManagedDisk(nodeName string, hashedDiskUri string) error
-
-	IsDiskAttached(hashedDiskUri, nodeName string, isManaged bool) (attached bool, lun int, err error)
+	// Attaches the disk to the host machine.
+	AttachDisk(isManagedDisk bool, diskName, diskUri string, nodeName types.NodeName, lun int32, cachingMode compute.CachingTypes) error
+	// Detaches the disk, identified by disk name or uri, from the host machine.
+	DetachDiskByName(diskName, diskUri string, nodeName types.NodeName) error
 
 	// Check if a list of volumes are attached to the node with the specified NodeName
 	DisksAreAttached(diskNames []string, nodeName types.NodeName) (map[string]bool, error)
+
+	// Get the LUN number of the disk that is attached to the host
+	GetDiskLun(diskName, diskUri string, nodeName types.NodeName) (int32, error)
+	// Get the next available LUN number to attach a new VHD
+	GetNextDiskLun(nodeName types.NodeName) (int32, error)
 }
 
 type azureDataDiskPlugin struct {
