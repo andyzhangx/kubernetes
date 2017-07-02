@@ -167,8 +167,9 @@ func (c *controllerCommon) DetachDiskByName(diskName, diskURI string, nodeName t
 
 	disks := *vm.StorageProfile.DataDisks
 	for i, disk := range disks {
-		if (disk.Name != nil && diskName != "" && *disk.Name == diskName) ||
-			(disk.Vhd.URI != nil && diskURI != "" && *disk.Vhd.URI == diskURI) {
+		if disk.Lun != nil && (disk.Name != nil && diskName != "" && *disk.Name == diskName) ||
+			(disk.Vhd != nil && disk.Vhd.URI != nil && diskURI != "" && *disk.Vhd.URI == diskURI) ||
+			(disk.ManagedDisk != nil && *disk.ManagedDisk.ID == diskURI) {
 			// found the disk
 			glog.V(4).Infof("detach disk: name %q uri %q", diskName, diskURI)
 			disks = append(disks[:i], disks[i+1:]...)
@@ -274,23 +275,4 @@ func (c *controllerCommon) DisksAreAttached(diskNames []string, nodeName types.N
 	}
 
 	return attached, nil
-}
-
-func (c *controllerCommon) getVirtualMachine(nodeName types.NodeName) (vm compute.VirtualMachine, exists bool, err error) {
-	var realErr error
-
-	vmName := string(nodeName)
-	c.cloud.operationPollRateLimiter.Accept()
-	vm, err = c.cloud.VirtualMachinesClient.Get(c.resourceGroup, vmName, "")
-
-	exists, realErr = checkResourceExistsFromError(err)
-	if realErr != nil {
-		return vm, false, realErr
-	}
-
-	if !exists {
-		return vm, false, nil
-	}
-
-	return vm, exists, err
 }

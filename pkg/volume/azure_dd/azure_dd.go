@@ -22,6 +22,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	storage "github.com/Azure/azure-sdk-for-go/arm/storage"
+	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure"
@@ -124,15 +125,31 @@ func (plugin *azureDataDiskPlugin) GetAccessModes() []v1.PersistentVolumeAccessM
 		v1.ReadWriteOnce,
 	}
 }
+
+// NewAttacher initializes an Attacher
 func (plugin *azureDataDiskPlugin) NewAttacher() (volume.Attacher, error) {
+	azure, err := getCloud(plugin.host)
+	if err != nil {
+		glog.V(4).Infof("failed to get azure cloud in NewAttacher, plugin.host : %s", plugin.host.GetHostName())
+		return nil, err
+	}
+
 	return &azureDiskAttacher{
 		plugin: plugin,
+		cloud:  azure,
 	}, nil
 }
 
 func (plugin *azureDataDiskPlugin) NewDetacher() (volume.Detacher, error) {
+	azure, err := getCloud(plugin.host)
+	if err != nil {
+		glog.V(4).Infof("failed to get azure cloud in NewDetacher, plugin.host : %s", plugin.host.GetHostName())
+		return nil, err
+	}
+
 	return &azureDiskDetacher{
 		plugin: plugin,
+		cloud:  azure,
 	}, nil
 }
 

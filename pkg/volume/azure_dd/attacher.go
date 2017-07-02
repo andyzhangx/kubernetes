@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/cloudprovider"
+	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure"
 	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/keymutex"
 	"k8s.io/kubernetes/pkg/util/mount"
@@ -39,10 +40,12 @@ import (
 
 type azureDiskDetacher struct {
 	plugin *azureDataDiskPlugin
+	cloud  *azure.Cloud
 }
 
 type azureDiskAttacher struct {
 	plugin *azureDataDiskPlugin
+	cloud  *azure.Cloud
 }
 
 var _ volume.Attacher = &azureDiskAttacher{}
@@ -59,12 +62,7 @@ func (a *azureDiskAttacher) Attach(spec *volume.Spec, nodeName types.NodeName) (
 		return "", err
 	}
 
-	cloud, err := getCloud(a.plugin.host)
-	if err != nil {
-		return "", err
-	}
-
-	instanceid, err := cloud.InstanceID(nodeName)
+	instanceid, err := a.cloud.InstanceID(nodeName)
 	if err != nil {
 		glog.Warningf("failed to get azure instance id")
 		return "", fmt.Errorf("failed to get azure instance id for node %q", nodeName)
@@ -248,16 +246,12 @@ func (attacher *azureDiskAttacher) MountDevice(spec *volume.Spec, devicePath str
 }
 
 // Detach detaches disk from Azure VM.
-func (detacher *azureDiskDetacher) Detach(diskName string, nodeName types.NodeName) error {
+func (d *azureDiskDetacher) Detach(diskName string, nodeName types.NodeName) error {
 	if diskName == "" {
 		return fmt.Errorf("invalid disk to detach: %q", diskName)
 	}
-	cloud, err := getCloud(detacher.plugin.host)
-	if err != nil {
-		return err
-	}
 
-	instanceid, err := cloud.InstanceID(nodeName)
+	instanceid, err := d.cloud.InstanceID(nodeName)
 	if err != nil {
 		glog.Warningf("no instance id for node %q, skip detaching", nodeName)
 		return nil
@@ -268,7 +262,7 @@ func (detacher *azureDiskDetacher) Detach(diskName string, nodeName types.NodeNa
 
 	glog.V(4).Infof("detach %v from node %q", diskName, nodeName)
 
-	diskController, err := getDiskController(detacher.plugin.host)
+	diskController, err := getDiskController(d.plugin.host)
 	if err != nil {
 		return err
 	}
@@ -277,6 +271,7 @@ func (detacher *azureDiskDetacher) Detach(diskName string, nodeName types.NodeNa
 		glog.Errorf("failed to detach azure disk %q, err %v", diskName, err)
 	}
 
+	glog.V(2).Infof("azureDisk - disk:%s was detached from node:%v", diskName, nodeName)
 	return err
 }
 
