@@ -17,15 +17,11 @@ limitations under the License.
 package azure_dd
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	storage "github.com/Azure/azure-sdk-for-go/arm/storage"
 	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/kubernetes/pkg/cloudprovider/providers/azure"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
 )
@@ -50,6 +46,11 @@ type DiskController interface {
 	GetDiskLun(diskName, diskUri string, nodeName types.NodeName) (int32, error)
 	// Get the next available LUN number to attach a new VHD
 	GetNextDiskLun(nodeName types.NodeName) (int32, error)
+
+	// Create a VHD blob
+	CreateVolume(name, storageAccount string, storageAccountType storage.SkuName, location string, requestGB int) (string, string, int, error)
+	// Delete a VHD blob
+	DeleteVolume(diskURI string) error
 }
 
 type azureDataDiskPlugin struct {
@@ -85,22 +86,7 @@ func (plugin *azureDataDiskPlugin) GetVolumeName(spec *volume.Spec) (string, err
 		return "", err
 	}
 
-	if volumeSource.Kind == nil {
-		// Called with a partial volume spec
-		// i.e constructed by ConstructVolumeSpec
-		return volumeSource.DataDiskURI, nil
-	}
-
-	isManaged := (*volumeSource.Kind == v1.AzureManagedDisk)
-	uniqueDiskNameTemplate := "%s%s"
-	hashedDiskUri := azure.MakeCRC32(strings.ToLower(volumeSource.DataDiskURI))
-
-	prefix := "b"
-	if isManaged {
-		prefix = "m"
-	}
-	diskName := fmt.Sprintf(uniqueDiskNameTemplate, prefix, hashedDiskUri)
-	return diskName, nil
+	return volumeSource.DataDiskURI, nil
 }
 
 func (plugin *azureDataDiskPlugin) CanSupport(spec *volume.Spec) bool {

@@ -18,7 +18,6 @@ package azure
 
 import (
 	"fmt"
-	"hash/crc32"
 	"strings"
 	"time"
 
@@ -30,23 +29,6 @@ import (
 	"github.com/golang/glog"
 )
 
-type armVMVhdDiskInfo struct {
-	URI string `json:"uri"`
-}
-type armVMManagedDiskInfo struct {
-	ID string `json:"id"`
-}
-
-type armVMDataDisk struct {
-	Lun          int                   `json:"lun"`
-	Name         string                `json:"name,omitempty"`
-	CreateOption string                `json:"createOption"`
-	ManagedDisk  *armVMManagedDiskInfo `json:"managedDisk,omitempty"`
-	Vhd          *armVMVhdDiskInfo     `json:"vhd,omitempty"`
-	Caching      string                `json:"caching"`
-	DiskSizeGB   int                   `json:"diskSizeGB,omitempty"`
-}
-
 const (
 	defaultDataDiskCount       int = 16 // which will allow you to work with most medium size VMs (if not found in map)
 	storageAccountNameTemplate     = "pvc%s"
@@ -57,8 +39,10 @@ const (
 	storageAccountUtilizationBeforeGrowing = 0.5
 	storageAccountsCountInit               = 2 // When the plug-in is init-ed, 2 storage accounts will be created to allow fast pvc create/attach/mount
 
-	maxLUN         = 64 // max number of LUNs per VM
-	errLeaseFailed = "AcquireDiskLeaseFailed"
+	maxLUN               = 64 // max number of LUNs per VM
+	errLeaseFailed       = "AcquireDiskLeaseFailed"
+	errLeaseIDMissing    = "LeaseIdMissing"
+	errContainerNotFound = "ContainerNotFound"
 )
 
 var defaultBackOff = kwait.Backoff{
@@ -67,9 +51,6 @@ var defaultBackOff = kwait.Backoff{
 	Factor:   1.5,
 	Jitter:   0.0,
 }
-
-var time1970 = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
-var polyTable = crc32.MakeTable(crc32.Koopman)
 
 type controllerCommon struct {
 	tenantID              string
@@ -166,16 +147,23 @@ func (c *controllerCommon) DetachDiskByName(diskName, diskURI string, nodeName t
 	}
 
 	disks := *vm.StorageProfile.DataDisks
+	bFoundDisk := false
 	for i, disk := range disks {
 		if disk.Lun != nil && (disk.Name != nil && diskName != "" && *disk.Name == diskName) ||
 			(disk.Vhd != nil && disk.Vhd.URI != nil && diskURI != "" && *disk.Vhd.URI == diskURI) ||
-			(disk.ManagedDisk != nil && *disk.ManagedDisk.ID == diskURI) {
+			(disk.ManagedDisk != nil && diskURI != "" && *disk.ManagedDisk.ID == diskURI) {
 			// found the disk
 			glog.V(4).Infof("detach disk: name %q uri %q", diskName, diskURI)
 			disks = append(disks[:i], disks[i+1:]...)
+			bFoundDisk = true
 			break
 		}
 	}
+
+	if !bFoundDisk {
+		return fmt.Errorf("detach azure disk failure, disk %s not found, diskURI: %s", diskName, diskURI)
+	}
+
 	newVM := compute.VirtualMachine{
 		Location: vm.Location,
 		VirtualMachineProperties: &compute.VirtualMachineProperties{

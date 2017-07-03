@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"strings"
 
-	storage "github.com/Azure/azure-sdk-for-go/arm/storage"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -88,6 +87,7 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 	}
 
 	var (
+		location, account          string
 		storageAccountType, fsType string
 		cachingMode                v1.AzureDataDiskCachingMode
 		kind                       v1.AzureDataDiskKind
@@ -104,9 +104,9 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 		case "skuname":
 			storageAccountType = v
 		case "location":
-			return nil, fmt.Errorf("AzureDisk - location parameter is not supported anymore in PVC, use PV to use named storage accounts in different locations")
+			location = v
 		case "storageaccount":
-			return nil, fmt.Errorf("AzureDisk - storage parameter is not suppoerted anymore in PVC, use PV to use named storage account")
+			account = v
 		case "storageaccounttype":
 			storageAccountType = v
 		case "kind":
@@ -120,11 +120,10 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 		}
 	}
 
-	// normalize  values
+	// normalize values
 	fsType = normalizeFsType(fsType)
-	skuName := storage.SkuName(storageAccountType)
-
-	if storageAccountType, err = normalizeStorageAccountType(storageAccountType); err != nil {
+	skuName, err := normalizeStorageAccountType(storageAccountType)
+	if err != nil {
 		return nil, err
 	}
 
@@ -136,25 +135,42 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 		return nil, err
 	}
 
-	// create disk
-	managed := (kind == v1.AzureManagedDisk)
-	forceStandAlone := (kind != v1.AzureSharedBlobDisk)
-	diskUri := ""
-
 	diskController, err := getDiskController(p.plugin.host)
 	if err != nil {
 		return nil, err
 	}
 
-	if managed {
-		diskUri, err = diskController.CreateManagedDisk(name, skuName, requestGB, *(p.options.CloudTags))
+	// create disk
+	diskURI := ""
+	if kind == v1.AzureManagedDisk {
+		diskURI, err = diskController.CreateManagedDisk(name, skuName, requestGB, *(p.options.CloudTags))
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		diskUri, err = diskController.CreateBlobDisk(name, skuName, requestGB, forceStandAlone)
-		if err != nil {
-			return nil, err
+		forceStandAlone := (kind == v1.AzureDedicatedBlobDisk)
+		if kind == v1.AzureDedicatedBlobDisk {
+			if location != "" && account != "" {
+				// use dedicated kind (by default) for compatibility
+				_, diskURI, _, err = diskController.CreateVolume(name, account, skuName, location, requestGB)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				if location != "" || account != "" {
+					return nil, fmt.Errorf("AzureDisk - location(%s) and account(%s) must be both empty or specified for dedicated kind, only one value specified is not allowed",
+						location, account)
+				}
+				diskURI, err = diskController.CreateBlobDisk(name, skuName, requestGB, forceStandAlone)
+				if err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			diskURI, err = diskController.CreateBlobDisk(name, skuName, requestGB, forceStandAlone)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -176,7 +192,7 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 				AzureDisk: &v1.AzureDiskVolumeSource{
 					CachingMode: &cachingMode,
 					DiskName:    name,
-					DataDiskURI: diskUri,
+					DataDiskURI: diskURI,
 					Kind:        &kind,
 					FSType:      &fsType,
 				},

@@ -25,6 +25,7 @@ import (
 	"strconv"
 	libstrings "strings"
 
+	storage "github.com/Azure/azure-sdk-for-go/arm/storage"
 	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -39,7 +40,7 @@ import (
 
 const (
 	defaultFSType             = "ext4"
-	defaultStorageAccountType = "standard_lrs"
+	defaultStorageAccountType = storage.StandardLRS
 )
 
 type dataDisk struct {
@@ -126,7 +127,7 @@ func normalizeFsType(fsType string) string {
 
 func normalizeKind(kind v1.AzureDataDiskKind) (v1.AzureDataDiskKind, error) {
 	if kind == "" {
-		return v1.AzureSharedBlobDisk, nil
+		return v1.AzureDedicatedBlobDisk, nil
 	}
 
 	if !supportedDiskKinds.Has(string(kind)) {
@@ -136,7 +137,7 @@ func normalizeKind(kind v1.AzureDataDiskKind) (v1.AzureDataDiskKind, error) {
 	return v1.AzureDataDiskKind(kind), nil
 }
 
-func normalizeStorageAccountType(storageAccountType string) (string, error) {
+func normalizeStorageAccountType(storageAccountType string) (storage.SkuName, error) {
 	if storageAccountType == "" {
 		return defaultStorageAccountType, nil
 	}
@@ -145,7 +146,7 @@ func normalizeStorageAccountType(storageAccountType string) (string, error) {
 		return "", fmt.Errorf("azureDisk - %s is not supported sku/storageaccounttype. Supported values are %s", storageAccountType, supportedStorageAccountTypes.List())
 	}
 
-	return storageAccountType, nil
+	return storage.SkuName(storageAccountType), nil
 }
 
 func normalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode) (v1.AzureDataDiskCachingMode, error) {

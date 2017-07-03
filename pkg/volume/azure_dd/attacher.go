@@ -246,9 +246,9 @@ func (attacher *azureDiskAttacher) MountDevice(spec *volume.Spec, devicePath str
 }
 
 // Detach detaches disk from Azure VM.
-func (d *azureDiskDetacher) Detach(diskName string, nodeName types.NodeName) error {
-	if diskName == "" {
-		return fmt.Errorf("invalid disk to detach: %q", diskName)
+func (d *azureDiskDetacher) Detach(diskURI string, nodeName types.NodeName) error {
+	if diskURI == "" {
+		return fmt.Errorf("invalid disk to detach: %q", diskURI)
 	}
 
 	instanceid, err := d.cloud.InstanceID(nodeName)
@@ -260,18 +260,18 @@ func (d *azureDiskDetacher) Detach(diskName string, nodeName types.NodeName) err
 		instanceid = instanceid[(ind + 1):]
 	}
 
-	glog.V(4).Infof("detach %v from node %q", diskName, nodeName)
+	glog.V(4).Infof("detach %v from node %q", diskURI, nodeName)
 
 	diskController, err := getDiskController(d.plugin.host)
 	if err != nil {
 		return err
 	}
-	err = diskController.DetachDiskByName(diskName, "" /* diskURI */, nodeName)
+	err = diskController.DetachDiskByName("", diskURI, nodeName)
 	if err != nil {
-		glog.Errorf("failed to detach azure disk %q, err %v", diskName, err)
+		glog.Errorf("failed to detach azure disk %q, err %v", diskURI, err)
 	}
 
-	glog.V(2).Infof("azureDisk - disk:%s was detached from node:%v", diskName, nodeName)
+	glog.V(2).Infof("azureDisk - disk:%s was detached from node:%v", diskURI, nodeName)
 	return err
 }
 
