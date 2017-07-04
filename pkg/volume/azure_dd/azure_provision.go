@@ -90,7 +90,7 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 		location, account          string
 		storageAccountType, fsType string
 		cachingMode                v1.AzureDataDiskCachingMode
-		kind                       v1.AzureDataDiskKind
+		strKind                    string
 		err                        error
 	)
 	// maxLength = 79 - (4 for ".vhd") = 75
@@ -110,7 +110,7 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 		case "storageaccounttype":
 			storageAccountType = v
 		case "kind":
-			kind = v1.AzureDataDiskKind(strFirstLetterToUpper(v))
+			strKind = v
 		case "cachingmode":
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 		case "fstype":
@@ -127,7 +127,8 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 		return nil, err
 	}
 
-	if kind, err = normalizeKind(kind); err != nil {
+	kind, err := normalizeKind(strFirstLetterToUpper(strKind))
+	if err != nil {
 		return nil, err
 	}
 

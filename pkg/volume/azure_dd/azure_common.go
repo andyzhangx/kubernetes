@@ -125,12 +125,12 @@ func normalizeFsType(fsType string) string {
 	return fsType
 }
 
-func normalizeKind(kind v1.AzureDataDiskKind) (v1.AzureDataDiskKind, error) {
+func normalizeKind(kind string) (v1.AzureDataDiskKind, error) {
 	if kind == "" {
 		return v1.AzureDedicatedBlobDisk, nil
 	}
 
-	if !supportedDiskKinds.Has(string(kind)) {
+	if !supportedDiskKinds.Has(kind) {
 		return "", fmt.Errorf("azureDisk - %s is not supported disk kind. Supported values are %s", kind, supportedDiskKinds.List())
 	}
 
