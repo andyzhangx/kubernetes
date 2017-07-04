@@ -118,7 +118,7 @@ func (a *azureDiskAttacher) VolumesAreAttached(specs []*volume.Spec, nodeName ty
 	for _, spec := range specs {
 		volumeSource, err := getVolumeSource(spec)
 		if err != nil {
-			glog.Errorf("Error getting volume (%q) source : %v", spec.Name(), err)
+			glog.Errorf("azureDisk - Error getting volume (%q) source : %v", spec.Name(), err)
 			continue
 		}
 
@@ -135,7 +135,7 @@ func (a *azureDiskAttacher) VolumesAreAttached(specs []*volume.Spec, nodeName ty
 	if err != nil {
 		// Log error and continue with attach
 		glog.Errorf(
-			"Error checking if volumes (%v) are attached to current node (%q). err=%v",
+			"azureDisk - Error checking if volumes (%v) are attached to current node (%q). err=%v",
 			volumeIDList, nodeName, err)
 		return volumesAttachedCheck, err
 	}
@@ -144,7 +144,7 @@ func (a *azureDiskAttacher) VolumesAreAttached(specs []*volume.Spec, nodeName ty
 		if !attached {
 			spec := volumeSpecMap[volumeID]
 			volumesAttachedCheck[spec] = false
-			glog.V(2).Infof("VolumesAreAttached: check volume %q (specName: %q) is no longer attached", volumeID, spec.Name())
+			glog.V(2).Infof("azureDisk - VolumesAreAttached: check volume %q (specName: %q) is no longer attached", volumeID, spec.Name())
 		}
 	}
 	return volumesAttachedCheck, nil
