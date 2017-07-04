@@ -110,7 +110,7 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 		case "storageaccounttype":
 			storageAccountType = v
 		case "kind":
-			kind = v1.AzureDataDiskKind(v)
+			kind = v1.AzureDataDiskKind(strFirstLetterToUpper(v))
 		case "cachingmode":
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 		case "fstype":

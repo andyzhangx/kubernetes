@@ -340,3 +340,10 @@ func getCloud(host volume.VolumeHost) (*azure.Cloud, error) {
 	}
 	return az, nil
 }
+
+func strFirstLetterToUpper(str string) string {
+	if len(str) < 2 {
+		return str
+	}
+	return libstrings.ToUpper(string(str[0])) + str[1:]
+}

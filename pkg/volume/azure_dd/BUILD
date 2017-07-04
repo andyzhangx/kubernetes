@@ -15,7 +15,7 @@ go_library(
         "azure_common.go",
         "azure_dd.go",
         "azure_mounter.go",
-        "azure_provisioner.go",
+        "azure_provision.go",
     ],
     tags = ["automanaged"],
     deps = [
