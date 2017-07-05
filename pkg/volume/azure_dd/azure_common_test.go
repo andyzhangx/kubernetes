@@ -132,4 +132,3 @@ func TestIoHandler(t *testing.T) {
 		t.Errorf("no data disk found: disk %v err %v", disk, err)
 	}
 }
-
