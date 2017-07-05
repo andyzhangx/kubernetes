@@ -15,7 +15,6 @@ go_library(
         "azure_backoff.go",
         "azure_blobDiskController.go",
         "azure_controllerCommon.go",
-        "azure_diskMap.go",
         "azure_file.go",
         "azure_instances.go",
         "azure_loadbalancer.go",

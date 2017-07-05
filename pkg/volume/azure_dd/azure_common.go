@@ -84,13 +84,6 @@ func makeGlobalPDPath(host volume.VolumeHost, diskUri string, isManaged bool) (s
 	return pdPath, nil
 }
 
-func diskKindHashfromPDName(diskName string) (bool, string) {
-	diskKind := diskName[0:1]
-	diskHash := diskName[1:]
-
-	return (diskKind == "m"), diskHash
-}
-
 func makeDataDisk(volumeName string, podUID types.UID, diskName string, host volume.VolumeHost) *dataDisk {
 	var metricProvider volume.MetricsProvider
 	if podUID != "" {

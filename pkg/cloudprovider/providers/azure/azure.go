@@ -258,9 +258,11 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 
 	az.StorageAccountClient = storage.NewAccountsClientWithBaseURI(az.Environment.ResourceManagerEndpoint, az.SubscriptionID)
 	az.StorageAccountClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
+	configureUserAgent(&az.StorageAccountClient.Client)
 
 	az.DisksClient = disk.NewDisksClientWithBaseURI(az.Environment.ResourceManagerEndpoint, az.SubscriptionID)
-	az.DisksClient.Authorizer = servicePrincipalToken
+	az.DisksClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
+	configureUserAgent(&az.DisksClient.Client)
 
 	// Conditionally configure rate limits
 	if az.CloudProviderRateLimit {
