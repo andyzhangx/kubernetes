@@ -91,7 +91,8 @@ func (c *BlobDiskController) CreateVolume(name, storageAccount string, storageAc
 			Location: &location}
 		cancel := make(chan struct{})
 
-		_, err := c.common.cloud.StorageAccountClient.Create(c.common.resourceGroup, storageAccount, cp, cancel)
+		_, errchan := c.common.cloud.StorageAccountClient.Create(c.common.resourceGroup, storageAccount, cp, cancel)
+		err = <-errchan
 		if err != nil {
 			return "", "", 0, fmt.Errorf(fmt.Sprintf("Create Storage Account %s, error: %s", storageAccount, err))
 		}
@@ -111,7 +112,8 @@ func (c *BlobDiskController) CreateVolume(name, storageAccount string, storageAc
 	}
 	blobClient := client.GetBlobService()
 
-	_, err = blobClient.CreateContainerIfNotExists(vhdContainerName, azstorage.ContainerAccessTypePrivate)
+	container := blobClient.GetContainerReference(vhdContainerName)
+	_, err = container.CreateIfNotExists(&azstorage.CreateContainerOptions{Access: azstorage.ContainerAccessTypePrivate})
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -169,7 +171,11 @@ func (c *BlobDiskController) getBlobNameAndAccountFromURI(diskURI string) (strin
 }
 
 func (c *BlobDiskController) createVHDBlobDisk(blobClient azstorage.BlobStorageClient, accountName, vhdName, containerName string, sizeGB int64) (string, string, error) {
-	blobClient.CreateContainerIfNotExists(containerName, azstorage.ContainerAccessTypePrivate)
+	container := blobClient.GetContainerReference(containerName)
+	_, err := container.CreateIfNotExists(&azstorage.CreateContainerOptions{Access: azstorage.ContainerAccessTypePrivate})
+	if err != nil {
+		return "", "", err
+	}
 
 	size := 1024 * 1024 * 1024 * sizeGB
 	vhdSize := size + vhd.VHD_HEADER_SIZE /* header size */
@@ -180,7 +186,10 @@ func (c *BlobDiskController) createVHDBlobDisk(blobClient azstorage.BlobStorageC
 	tags["created-by"] = "k8s-azure-DataDisk"
 	glog.V(4).Infof("azureDisk - creating page blob %name in container %s account %s", vhdName, containerName, accountName)
 
-	err := blobClient.PutPageBlob(containerName, vhdName, vhdSize, tags)
+	blob := container.GetBlobReference(vhdName)
+	blob.Properties.ContentLength = vhdSize
+	blob.Metadata = tags
+	err = blob.PutPageBlob(nil)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to put page blob %s in container %s: %v", vhdName, containerName, err)
 	}
@@ -188,12 +197,15 @@ func (c *BlobDiskController) createVHDBlobDisk(blobClient azstorage.BlobStorageC
 	// add VHD signature to the blob
 	h, err := createVHDHeader(uint64(size))
 	if err != nil {
-		blobClient.DeleteBlobIfExists(containerName, vhdName, nil)
+		blob.DeleteIfExists(nil)
 		return "", "", fmt.Errorf("failed to create vhd header, err: %v", err)
 	}
 
-	if err = blobClient.PutPage(containerName, vhdName, size, vhdSize-1, azstorage.PageWriteTypeUpdate, h[:vhd.VHD_HEADER_SIZE], nil); err != nil {
-		_, _ = blobClient.DeleteBlobIfExists(defaultContainerName, vhdName, nil)
+	blobRange := azstorage.BlobRange{
+		Start: uint64(size),
+		End:   uint64(vhdSize - 1),
+	}
+	if err = blob.WriteRange(blobRange, bytes.NewBuffer(h[:vhd.VHD_HEADER_SIZE]), nil); err != nil {
 		glog.Infof("azureDisk - failed to put header page for data disk %s in container %s account %s, error was %s\n",
 			vhdName, containerName, accountName, err.Error())
 		return "", "", err
@@ -217,7 +229,9 @@ func (c *BlobDiskController) deleteVhdBlob(accountName, accountKey, blobName str
 	}
 	blobSvc := client.GetBlobService()
 
-	return blobSvc.DeleteBlob(vhdContainerName, blobName, nil)
+	container := blobSvc.GetContainerReference(vhdContainerName)
+	blob := container.GetBlobReference(blobName)
+	return blob.Delete(nil)
 }
 
 //CreateBlobDisk : create a blob disk in a node
@@ -284,7 +298,9 @@ func (c *BlobDiskController) DeleteBlobDisk(diskURI string, wasForced bool) erro
 
 	glog.V(4).Infof("azureDisk - About to delete vhd file %s on storage account %s container %s", vhdName, storageAccountName, defaultContainerName)
 
-	_, err = blobSvc.DeleteBlobIfExists(defaultContainerName, vhdName, nil)
+	container := blobSvc.GetContainerReference(defaultContainerName)
+	blob := container.GetBlobReference(vhdName)
+	_, err = blob.DeleteIfExists(nil)
 
 	if c.accounts[storageAccountName].diskCount == -1 {
 		if diskCount, err := c.getDiskCount(storageAccountName); err != nil {
@@ -477,7 +493,8 @@ func (c *BlobDiskController) ensureDefaultContainer(storageAccountName string) e
 		return err
 	}
 
-	bCreated, err := blobSvc.CreateContainerIfNotExists(defaultContainerName, azstorage.ContainerAccessType(""))
+	container := blobSvc.GetContainerReference(defaultContainerName)
+	bCreated, err := container.CreateIfNotExists(&azstorage.CreateContainerOptions{Access: azstorage.ContainerAccessTypePrivate})
 	if err != nil {
 		return err
 	}
@@ -509,7 +526,8 @@ func (c *BlobDiskController) getDiskCount(SAName string) (int, error) {
 	}
 	params := azstorage.ListBlobsParameters{}
 
-	response, err := blobSvc.ListBlobs(defaultContainerName, params)
+	container := blobSvc.GetContainerReference(vhdContainerName)
+	response, err := container.ListBlobs(params)
 	if err != nil {
 		return 0, err
 	}

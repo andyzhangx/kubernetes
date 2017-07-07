@@ -16,7 +16,6 @@ const (
 	approximateMessagesCountHeader = "X-Ms-Approximate-Messages-Count"
 )
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // QueueAccessPolicy represents each access policy in the queue ACL.
 type QueueAccessPolicy struct {
 	ID         string
@@ -26,13 +25,6 @@ type QueueAccessPolicy struct {
 	CanAdd     bool
 	CanUpdate  bool
 	CanProcess bool
-=======
-// QueueServiceClient contains operations for Microsoft Azure Queue Storage
-// Service.
-type QueueServiceClient struct {
-	client Client
-	auth   authentication
->>>>>>> fix godeps issue and change azure_file code due to api change
 }
 
 // QueuePermissions represents the queue ACLs.
@@ -126,7 +118,6 @@ func (q *Queue) Exists() (bool, error) {
 // SetMetadata operation sets user-defined metadata on the specified queue.
 // Metadata is associated with the queue as name-value pairs.
 //
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/Set-Queue-Metadata
 func (q *Queue) SetMetadata(options *QueueServiceOptions) error {
 	params := url.Values{"comp": {"metadata"}}
@@ -136,23 +127,10 @@ func (q *Queue) SetMetadata(options *QueueServiceOptions) error {
 	if options != nil {
 		params = addTimeout(params, options.Timeout)
 		headers = mergeHeaders(headers, headersFromStruct(*options))
-=======
-// See https://msdn.microsoft.com/en-us/library/azure/dd179348.aspx
-func (c QueueServiceClient) SetMetadata(name string, metadata map[string]string) error {
-	uri := c.client.getEndpoint(queueServiceName, pathForQueue(name), url.Values{"comp": []string{"metadata"}})
-	metadata = c.client.protectUserAgent(metadata)
-	headers := c.client.getStandardHeaders()
-	for k, v := range metadata {
-		headers[userDefinedMetadataHeaderPrefix+k] = v
->>>>>>> fix godeps issue and change azure_file code due to api change
 	}
 	uri := q.qsc.client.getEndpoint(queueServiceName, q.buildPath(), params)
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	resp, err := q.qsc.client.exec(http.MethodPut, uri, headers, nil, q.qsc.auth)
-=======
-	resp, err := c.client.exec(http.MethodPut, uri, headers, nil, c.auth)
->>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return err
 	}
@@ -169,7 +147,6 @@ func (c QueueServiceClient) SetMetadata(name string, metadata map[string]string)
 // Because the way Golang's http client (and http.Header in particular)
 // canonicalize header names, the returned metadata names would always
 // be all lower case.
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 func (q *Queue) GetMetadata(options *QueueServiceOptions) error {
 	params := url.Values{"comp": {"metadata"}}
 	headers := q.qsc.client.getStandardHeaders()
@@ -177,16 +154,6 @@ func (q *Queue) GetMetadata(options *QueueServiceOptions) error {
 	if options != nil {
 		params = addTimeout(params, options.Timeout)
 		headers = mergeHeaders(headers, headersFromStruct(*options))
-=======
-func (c QueueServiceClient) GetMetadata(name string) (QueueMetadataResponse, error) {
-	qm := QueueMetadataResponse{}
-	qm.UserDefinedMetadata = make(map[string]string)
-	uri := c.client.getEndpoint(queueServiceName, pathForQueue(name), url.Values{"comp": []string{"metadata"}})
-	headers := c.client.getStandardHeaders()
-	resp, err := c.client.exec(http.MethodGet, uri, headers, nil, c.auth)
-	if err != nil {
-		return qm, err
->>>>>>> fix godeps issue and change azure_file code due to api change
 	}
 	uri := q.qsc.client.getEndpoint(queueServiceName, q.buildPath(), url.Values{"comp": {"metadata"}})
 
@@ -213,23 +180,11 @@ func (c QueueServiceClient) GetMetadata(name string) (QueueMetadataResponse, err
 	return nil
 }
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // GetMessageReference returns a message object with the specified text.
 func (q *Queue) GetMessageReference(text string) *Message {
 	return &Message{
 		Queue: q,
 		Text:  text,
-=======
-// CreateQueue operation creates a queue under the given account.
-//
-// See https://msdn.microsoft.com/en-us/library/azure/dd179342.aspx
-func (c QueueServiceClient) CreateQueue(name string) error {
-	uri := c.client.getEndpoint(queueServiceName, pathForQueue(name), url.Values{})
-	headers := c.client.getStandardHeaders()
-	resp, err := c.client.exec(http.MethodPut, uri, headers, nil, c.auth)
-	if err != nil {
-		return err
->>>>>>> fix godeps issue and change azure_file code due to api change
 	}
 }
 
@@ -251,7 +206,6 @@ type messages struct {
 // GetMessages operation retrieves one or more messages from the front of the
 // queue.
 //
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/Get-Messages
 func (q *Queue) GetMessages(options *GetMessagesOptions) ([]Message, error) {
 	query := url.Values{}
@@ -270,18 +224,11 @@ func (q *Queue) GetMessages(options *GetMessagesOptions) ([]Message, error) {
 	uri := q.qsc.client.getEndpoint(queueServiceName, q.buildPathMessages(), query)
 
 	resp, err := q.qsc.client.exec(http.MethodGet, uri, headers, nil, q.qsc.auth)
-=======
-// See https://msdn.microsoft.com/en-us/library/azure/dd179436.aspx
-func (c QueueServiceClient) DeleteQueue(name string) error {
-	uri := c.client.getEndpoint(queueServiceName, pathForQueue(name), url.Values{})
-	resp, err := c.client.exec(http.MethodDelete, uri, c.client.getStandardHeaders(), nil, c.auth)
->>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return []Message{}, err
 	}
 	defer readAndCloseBody(resp.body)
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	var out messages
 	err = xmlUnmarshal(resp.body, &out)
 	if err != nil {
@@ -289,14 +236,6 @@ func (c QueueServiceClient) DeleteQueue(name string) error {
 	}
 	for i := range out.Messages {
 		out.Messages[i].Queue = q
-=======
-// QueueExists returns true if a queue with given name exists.
-func (c QueueServiceClient) QueueExists(name string) (bool, error) {
-	uri := c.client.getEndpoint(queueServiceName, pathForQueue(name), url.Values{"comp": {"metadata"}})
-	resp, err := c.client.exec(http.MethodGet, uri, c.client.getStandardHeaders(), nil, c.auth)
-	if resp != nil && (resp.statusCode == http.StatusOK || resp.statusCode == http.StatusNotFound) {
-		return resp.statusCode == http.StatusOK, nil
->>>>>>> fix godeps issue and change azure_file code due to api change
 	}
 	return out.Messages, err
 }
@@ -331,16 +270,10 @@ func (q *Queue) PeekMessages(options *PeekMessagesOptions) ([]Message, error) {
 	if err != nil {
 		return []Message{}, err
 	}
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	defer readAndCloseBody(resp.body)
 
 	var out messages
 	err = xmlUnmarshal(resp.body, &out)
-=======
-	headers := c.client.getStandardHeaders()
-	headers["Content-Length"] = strconv.Itoa(nn)
-	resp, err := c.client.exec(http.MethodPost, uri, headers, body, c.auth)
->>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return []Message{}, err
 	}
@@ -352,7 +285,6 @@ func (q *Queue) PeekMessages(options *PeekMessagesOptions) ([]Message, error) {
 
 // ClearMessages operation deletes all messages from the specified queue.
 //
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/Clear-Messages
 func (q *Queue) ClearMessages(options *QueueServiceOptions) error {
 	params := url.Values{}
@@ -365,12 +297,6 @@ func (q *Queue) ClearMessages(options *QueueServiceOptions) error {
 	uri := q.qsc.client.getEndpoint(queueServiceName, q.buildPathMessages(), params)
 
 	resp, err := q.qsc.client.exec(http.MethodDelete, uri, headers, nil, q.qsc.auth)
-=======
-// See https://msdn.microsoft.com/en-us/library/azure/dd179454.aspx
-func (c QueueServiceClient) ClearMessages(queue string) error {
-	uri := c.client.getEndpoint(queueServiceName, pathForQueueMessages(queue), url.Values{})
-	resp, err := c.client.exec(http.MethodDelete, uri, c.client.getStandardHeaders(), nil, c.auth)
->>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return err
 	}
@@ -378,60 +304,26 @@ func (c QueueServiceClient) ClearMessages(queue string) error {
 	return checkRespCode(resp.statusCode, []int{http.StatusNoContent})
 }
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // SetPermissions sets up queue permissions
 // See https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/set-queue-acl
 func (q *Queue) SetPermissions(permissions QueuePermissions, options *SetQueuePermissionOptions) error {
 	body, length, err := generateQueueACLpayload(permissions.AccessPolicies)
-=======
-// GetMessages operation retrieves one or more messages from the front of the
-// queue.
-//
-// See https://msdn.microsoft.com/en-us/library/azure/dd179474.aspx
-func (c QueueServiceClient) GetMessages(queue string, params GetMessagesParameters) (GetMessagesResponse, error) {
-	var r GetMessagesResponse
-	uri := c.client.getEndpoint(queueServiceName, pathForQueueMessages(queue), params.getParameters())
-	resp, err := c.client.exec(http.MethodGet, uri, c.client.getStandardHeaders(), nil, c.auth)
->>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return err
 	}
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	params := url.Values{
 		"comp": {"acl"},
-=======
-// PeekMessages retrieves one or more messages from the front of the queue, but
-// does not alter the visibility of the message.
-//
-// See https://msdn.microsoft.com/en-us/library/azure/dd179472.aspx
-func (c QueueServiceClient) PeekMessages(queue string, params PeekMessagesParameters) (PeekMessagesResponse, error) {
-	var r PeekMessagesResponse
-	uri := c.client.getEndpoint(queueServiceName, pathForQueueMessages(queue), params.getParameters())
-	resp, err := c.client.exec(http.MethodGet, uri, c.client.getStandardHeaders(), nil, c.auth)
-	if err != nil {
-		return r, err
->>>>>>> fix godeps issue and change azure_file code due to api change
 	}
 	headers := q.qsc.client.getStandardHeaders()
 	headers["Content-Length"] = strconv.Itoa(length)
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	if options != nil {
 		params = addTimeout(params, options.Timeout)
 		headers = mergeHeaders(headers, headersFromStruct(*options))
 	}
 	uri := q.qsc.client.getEndpoint(queueServiceName, q.buildPath(), params)
 	resp, err := q.qsc.client.exec(http.MethodPut, uri, headers, body, q.qsc.auth)
-=======
-// DeleteMessage operation deletes the specified message.
-//
-// See https://msdn.microsoft.com/en-us/library/azure/dd179347.aspx
-func (c QueueServiceClient) DeleteMessage(queue, messageID, popReceipt string) error {
-	uri := c.client.getEndpoint(queueServiceName, pathForMessage(queue, messageID), url.Values{
-		"popreceipt": {popReceipt}})
-	resp, err := c.client.exec(http.MethodDelete, uri, c.client.getStandardHeaders(), nil, c.auth)
->>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return err
 	}
@@ -492,7 +384,6 @@ func (q *Queue) GetPermissions(options *GetQueuePermissionOptions) (*QueuePermis
 	params := url.Values{
 		"comp": {"acl"},
 	}
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	headers := q.qsc.client.getStandardHeaders()
 
 	if options != nil {
@@ -501,11 +392,6 @@ func (q *Queue) GetPermissions(options *GetQueuePermissionOptions) (*QueuePermis
 	}
 	uri := q.qsc.client.getEndpoint(queueServiceName, q.buildPath(), params)
 	resp, err := q.qsc.client.exec(http.MethodGet, uri, headers, nil, q.qsc.auth)
-=======
-	headers := c.client.getStandardHeaders()
-	headers["Content-Length"] = fmt.Sprintf("%d", nn)
-	resp, err := c.client.exec(http.MethodPut, uri, headers, body, c.auth)
->>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return nil, err
 	}

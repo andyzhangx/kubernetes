@@ -20,7 +20,6 @@ const (
 	sharedKeyLiteForTable authentication = "sharedKeyLiteTable"
 
 	// headers
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	headerAcceptCharset           = "Accept-Charset"
 	headerAuthorization           = "Authorization"
 	headerContentLength           = "Content-Length"
@@ -39,22 +38,6 @@ const (
 	headerDataServiceVersion      = "DataServiceVersion"
 	headerMaxDataServiceVersion   = "MaxDataServiceVersion"
 	headerContentTransferEncoding = "Content-Transfer-Encoding"
-=======
-	headerAuthorization     = "Authorization"
-	headerContentLength     = "Content-Length"
-	headerDate              = "Date"
-	headerXmsDate           = "x-ms-date"
-	headerXmsVersion        = "x-ms-version"
-	headerContentEncoding   = "Content-Encoding"
-	headerContentLanguage   = "Content-Language"
-	headerContentType       = "Content-Type"
-	headerContentMD5        = "Content-MD5"
-	headerIfModifiedSince   = "If-Modified-Since"
-	headerIfMatch           = "If-Match"
-	headerIfNoneMatch       = "If-None-Match"
-	headerIfUnmodifiedSince = "If-Unmodified-Since"
-	headerRange             = "Range"
->>>>>>> fix godeps issue and change azure_file code due to api change
 )
 
 func (c *Client) addAuthorizationHeader(verb, url string, headers map[string]string, auth authentication) (map[string]string, error) {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -32,19 +31,6 @@ type TableAccessPolicy struct {
 	CanAppend  bool
 	CanUpdate  bool
 	CanDelete  bool
-=======
-	"net/http"
-	"net/url"
-	"strconv"
-	"time"
-)
-
-// TableServiceClient contains operations for Microsoft Azure Table Storage
-// Service.
-type TableServiceClient struct {
-	client Client
-	auth   authentication
->>>>>>> fix godeps issue and change azure_file code due to api change
 }
 
 // Table represents an Azure table.
@@ -71,37 +57,12 @@ type continuationToken struct {
 	NextRowKey       string
 }
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 func (t *Table) buildPath() string {
 	return fmt.Sprintf("/%s", t.Name)
 }
 
 func (t *Table) buildSpecificPath() string {
 	return fmt.Sprintf("%s('%s')", tablesURIPath, t.Name)
-=======
-// TableAccessPolicy are used for SETTING table policies
-type TableAccessPolicy struct {
-	ID         string
-	StartTime  time.Time
-	ExpiryTime time.Time
-	CanRead    bool
-	CanAppend  bool
-	CanUpdate  bool
-	CanDelete  bool
-}
-
-func pathForTable(table AzureTable) string { return fmt.Sprintf("%s", table) }
-
-func (c *TableServiceClient) getStandardHeaders() map[string]string {
-	return map[string]string{
-		"x-ms-version":   "2015-02-21",
-		"x-ms-date":      currentTimeRfc1123Formatted(),
-		"Accept":         "application/json;odata=nometadata",
-		"Accept-Charset": "UTF-8",
-		"Content-Type":   "application/json",
-		userAgentHeader:  c.client.userAgent,
-	}
->>>>>>> fix godeps issue and change azure_file code due to api change
 }
 
 // Get gets the referenced table.
@@ -117,12 +78,8 @@ func (t *Table) Get(timeout uint, ml MetadataLevel) error {
 	headers := t.tsc.client.getStandardHeaders()
 	headers[headerAccept] = string(ml)
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	uri := t.tsc.client.getEndpoint(tableServiceName, t.buildSpecificPath(), query)
 	resp, err := t.tsc.client.exec(http.MethodGet, uri, headers, nil, t.tsc.auth)
-=======
-	resp, err := c.client.execInternalJSON(http.MethodGet, uri, headers, nil, c.auth)
->>>>>>> fix godeps issue and change azure_file code due to api change
 	if err != nil {
 		return err
 	}
@@ -159,13 +116,8 @@ func (t *Table) Create(timeout uint, ml MetadataLevel, options *TableOptions) er
 	}
 	req := createTableRequest{TableName: t.Name}
 	buf := new(bytes.Buffer)
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
 		return err
-=======
-	if _, err := buf.ReadFrom(resp.body); err != nil {
-		return nil, err
->>>>>>> fix godeps issue and change azure_file code due to api change
 	}
 
 	headers := t.tsc.client.getStandardHeaders()
@@ -256,7 +208,6 @@ func (options *QueryOptions) getParameters() (url.Values, map[string]string) {
 	return query, headers
 }
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 // QueryEntities returns the entities in the table.
 // You can use query options defined by the OData Protocol specification.
 //
@@ -293,9 +244,6 @@ func (t *Table) SetPermissions(tap []TableAccessPolicy, timeout uint, options *T
 	params := url.Values{"comp": {"acl"},
 		"timeout": {strconv.Itoa(int(timeout))},
 	}
-=======
-	resp, err := c.client.execInternalJSON(http.MethodPost, uri, headers, buf, c.auth)
->>>>>>> fix godeps issue and change azure_file code due to api change
 
 	uri := t.tsc.client.getEndpoint(tableServiceName, t.Name, params)
 	headers := t.tsc.client.getStandardHeaders()
@@ -360,15 +308,11 @@ func (t *Table) GetPermissions(timeout int, options *TableOptions) ([]TableAcces
 	return updateTableAccessPolicy(ap), nil
 }
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 func (t *Table) queryEntities(uri string, headers map[string]string, ml MetadataLevel) (*EntityQueryResult, error) {
 	headers = mergeHeaders(headers, t.tsc.client.getStandardHeaders())
 	if ml != EmptyPayload {
 		headers[headerAccept] = string(ml)
 	}
-=======
-	resp, err := c.client.execInternalJSON(http.MethodDelete, uri, headers, nil, c.auth)
->>>>>>> fix godeps issue and change azure_file code due to api change
 
 	resp, err := t.tsc.client.exec(http.MethodGet, uri, headers, nil, t.tsc.auth)
 	if err != nil {
@@ -426,83 +370,8 @@ func extractContinuationTokenFromHeaders(h http.Header) *continuationToken {
 	return nil
 }
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 func updateTableAccessPolicy(ap AccessPolicy) []TableAccessPolicy {
 	taps := []TableAccessPolicy{}
-=======
-// SetTablePermissions sets up table ACL permissions as per REST details https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/Set-Table-ACL
-func (c *TableServiceClient) SetTablePermissions(table AzureTable, policies []TableAccessPolicy, timeout uint) (err error) {
-	params := url.Values{"comp": {"acl"}}
-
-	if timeout > 0 {
-		params.Add("timeout", fmt.Sprint(timeout))
-	}
-
-	uri := c.client.getEndpoint(tableServiceName, string(table), params)
-	headers := c.client.getStandardHeaders()
-
-	body, length, err := generateTableACLPayload(policies)
-	if err != nil {
-		return err
-	}
-	headers["Content-Length"] = fmt.Sprintf("%v", length)
-
-	resp, err := c.client.execInternalJSON(http.MethodPut, uri, headers, body, c.auth)
-	if err != nil {
-		return err
-	}
-	defer resp.body.Close()
-
-	if err := checkRespCode(resp.statusCode, []int{http.StatusNoContent}); err != nil {
-		return err
-	}
-	return nil
-}
-
-func generateTableACLPayload(policies []TableAccessPolicy) (io.Reader, int, error) {
-	sil := SignedIdentifiers{
-		SignedIdentifiers: []SignedIdentifier{},
-	}
-	for _, tap := range policies {
-		permission := generateTablePermissions(&tap)
-		signedIdentifier := convertAccessPolicyToXMLStructs(tap.ID, tap.StartTime, tap.ExpiryTime, permission)
-		sil.SignedIdentifiers = append(sil.SignedIdentifiers, signedIdentifier)
-	}
-	return xmlMarshal(sil)
-}
-
-// GetTablePermissions gets the table ACL permissions, as per REST details https://docs.microsoft.com/en-us/rest/api/storageservices/fileservices/get-table-acl
-func (c *TableServiceClient) GetTablePermissions(table AzureTable, timeout int) (permissionResponse []TableAccessPolicy, err error) {
-	params := url.Values{"comp": {"acl"}}
-
-	if timeout > 0 {
-		params.Add("timeout", strconv.Itoa(timeout))
-	}
-
-	uri := c.client.getEndpoint(tableServiceName, string(table), params)
-	headers := c.client.getStandardHeaders()
-	resp, err := c.client.execInternalJSON(http.MethodGet, uri, headers, nil, c.auth)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.body.Close()
-
-	if err = checkRespCode(resp.statusCode, []int{http.StatusOK}); err != nil {
-		return nil, err
-	}
-
-	var ap AccessPolicy
-	err = xmlUnmarshal(resp.body, &ap.SignedIdentifiersList)
-	if err != nil {
-		return nil, err
-	}
-	out := updateTableAccessPolicy(ap)
-	return out, nil
-}
-
-func updateTableAccessPolicy(ap AccessPolicy) []TableAccessPolicy {
-	out := []TableAccessPolicy{}
->>>>>>> fix godeps issue and change azure_file code due to api change
 	for _, policy := range ap.SignedIdentifiersList.SignedIdentifiers {
 		tap := TableAccessPolicy{
 			ID:         policy.ID,
@@ -514,15 +383,9 @@ func updateTableAccessPolicy(ap AccessPolicy) []TableAccessPolicy {
 		tap.CanUpdate = updatePermissions(policy.AccessPolicy.Permission, "u")
 		tap.CanDelete = updatePermissions(policy.AccessPolicy.Permission, "d")
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 		taps = append(taps, tap)
 	}
 	return taps
-=======
-		out = append(out, tap)
-	}
-	return out
->>>>>>> fix godeps issue and change azure_file code due to api change
 }
 
 func generateTablePermissions(tap *TableAccessPolicy) (permissions string) {

@@ -15,13 +15,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	"regexp"
 	"runtime"
-=======
-	"runtime"
-	"strconv"
->>>>>>> fix godeps issue and change azure_file code due to api change
 	"strings"
 	"time"
 
@@ -56,11 +51,8 @@ const (
 	storageEmulatorQueue = "127.0.0.1:10001"
 
 	userAgentHeader = "User-Agent"
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 
 	userDefinedMetadataHeaderPrefix = "x-ms-meta-"
-=======
->>>>>>> fix godeps issue and change azure_file code due to api change
 )
 
 var (
@@ -114,14 +106,11 @@ type Client struct {
 	// client.
 	HTTPClient *http.Client
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 	// Sender is an interface that sends the request. Clients are
 	// created with a DefaultSender. The DefaultSender has an
 	// automatic retry strategy built in. The Sender can be customized.
 	Sender Sender
 
-=======
->>>>>>> fix godeps issue and change azure_file code due to api change
 	accountName      string
 	accountKey       []byte
 	useHTTPS         bool
@@ -239,17 +228,13 @@ func NewClient(accountName, accountKey, blobServiceBaseURL, apiVersion string, u
 	}
 
 	c = Client{
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 		HTTPClient:       http.DefaultClient,
-=======
->>>>>>> fix godeps issue and change azure_file code due to api change
 		accountName:      accountName,
 		accountKey:       key,
 		useHTTPS:         useHTTPS,
 		baseURL:          blobServiceBaseURL,
 		apiVersion:       apiVersion,
 		UseSharedKeyLite: false,
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 		Sender: &DefaultSender{
 			RetryAttempts: 5,
 			ValidStatusCodes: []int{
@@ -264,41 +249,6 @@ func NewClient(accountName, accountKey, blobServiceBaseURL, apiVersion string, u
 	}
 	c.userAgent = c.getDefaultUserAgent()
 	return c, nil
-=======
-	}
-	c.userAgent = c.getDefaultUserAgent()
-	return c, nil
-}
-
-func (c Client) getDefaultUserAgent() string {
-	return fmt.Sprintf("Go/%s (%s-%s) Azure-SDK-For-Go/%s storage-dataplane/%s",
-		runtime.Version(),
-		runtime.GOARCH,
-		runtime.GOOS,
-		sdkVersion,
-		c.apiVersion,
-	)
-}
-
-// AddToUserAgent adds an extension to the current user agent
-func (c *Client) AddToUserAgent(extension string) error {
-	if extension != "" {
-		c.userAgent = fmt.Sprintf("%s %s", c.userAgent, extension)
-		return nil
-	}
-	return fmt.Errorf("Extension was empty, User Agent stayed as %s", c.userAgent)
-}
-
-// protectUserAgent is used in funcs that include extraheaders as a parameter.
-// It prevents the User-Agent header to be overwritten, instead if it happens to
-// be present, it gets added to the current User-Agent. Use it before getStandardHeaders
-func (c *Client) protectUserAgent(extraheaders map[string]string) map[string]string {
-	if v, ok := extraheaders[userAgentHeader]; ok {
-		c.AddToUserAgent(v)
-		delete(extraheaders, userAgentHeader)
-	}
-	return extraheaders
->>>>>>> fix godeps issue and change azure_file code due to api change
 }
 
 // IsValidStorageAccount checks if the storage account name is valid.
@@ -470,17 +420,10 @@ func (c Client) exec(verb, url string, headers map[string]string, body io.Reader
 			return nil, err
 		}
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 		requestID, date, version := getDebugHeaders(resp.Header)
 		if len(respBody) == 0 {
 			// no error in response body, might happen in HEAD requests
 			err = serviceErrFromStatusCode(resp.StatusCode, resp.Status, requestID, date, version)
-=======
-		requestID := resp.Header.Get("x-ms-request-id")
-		if len(respBody) == 0 {
-			// no error in response body, might happen in HEAD requests
-			err = serviceErrFromStatusCode(resp.StatusCode, resp.Status, requestID)
->>>>>>> fix godeps issue and change azure_file code due to api change
 		} else {
 			storageErr := AzureStorageServiceError{
 				StatusCode: resp.StatusCode,
@@ -489,7 +432,6 @@ func (c Client) exec(verb, url string, headers map[string]string, body io.Reader
 				APIVersion: version,
 			}
 			// response contains storage service error object, unmarshal
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 			if resp.Header.Get("Content-Type") == "application/xml" {
 				errIn := serviceErrFromXML(respBody, &storageErr)
 				if err != nil { // error unmarshaling the error response
@@ -500,11 +442,6 @@ func (c Client) exec(verb, url string, headers map[string]string, body io.Reader
 				if err != nil { // error unmarshaling the error response
 					err = errIn
 				}
-=======
-			storageErr, errIn := serviceErrFromXML(respBody, resp.StatusCode, requestID)
-			if err != nil { // error unmarshaling the error response
-				err = errIn
->>>>>>> fix godeps issue and change azure_file code due to api change
 			}
 			err = storageErr
 		}
@@ -521,17 +458,10 @@ func (c Client) exec(verb, url string, headers map[string]string, body io.Reader
 		body:       resp.Body}, nil
 }
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 func (c Client) execInternalJSONCommon(verb, url string, headers map[string]string, body io.Reader, auth authentication) (*odataResponse, *http.Request, *http.Response, error) {
 	headers, err := c.addAuthorizationHeader(verb, url, headers, auth)
 	if err != nil {
 		return nil, nil, nil, err
-=======
-func (c Client) execInternalJSON(verb, url string, headers map[string]string, body io.Reader, auth authentication) (*odataResponse, error) {
-	headers, err := c.addAuthorizationHeader(verb, url, headers, auth)
-	if err != nil {
-		return nil, err
->>>>>>> fix godeps issue and change azure_file code due to api change
 	}
 
 	req, err := http.NewRequest(verb, url, body)
@@ -560,13 +490,8 @@ func (c Client) execInternalJSON(verb, url string, headers map[string]string, bo
 		requestID, date, version := getDebugHeaders(resp.Header)
 		if len(respBody) == 0 {
 			// no error in response body, might happen in HEAD requests
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 			err = serviceErrFromStatusCode(resp.StatusCode, resp.Status, requestID, date, version)
 			return respToRet, req, resp, err
-=======
-			err = serviceErrFromStatusCode(resp.StatusCode, resp.Status, resp.Header.Get("x-ms-request-id"))
-			return respToRet, err
->>>>>>> fix godeps issue and change azure_file code due to api change
 		}
 		// try unmarshal as odata.error json
 		err = json.Unmarshal(respBody, &respToRet.odata)
@@ -618,7 +543,6 @@ func (c Client) execBatchOperationJSON(verb, url string, headers map[string]stri
 	return respToRet, nil
 }
 
-<<<<<<< fc3349606cf7a073eac1d4f2e805a04b7e282d07
 func genChangesetReader(req *http.Request, respToRet *odataResponse, batchPartBuf io.Reader, changesetBoundary string) error {
 	changesetMultiReader := multipart.NewReader(batchPartBuf, changesetBoundary)
 	changesetPart, err := changesetMultiReader.NextPart()
@@ -667,11 +591,6 @@ func genBatchReader(batchBoundary string, respBody []byte) (io.Reader, string, e
 func readAndCloseBody(body io.ReadCloser) ([]byte, error) {
 	defer body.Close()
 	out, err := ioutil.ReadAll(body)
-=======
-func readResponseBody(resp *http.Response) ([]byte, error) {
-	defer resp.Body.Close()
-	out, err := ioutil.ReadAll(resp.Body)
->>>>>>> fix godeps issue and change azure_file code due to api change
 	if err == io.EOF {
 		err = nil
 	}
@@ -705,15 +624,6 @@ func serviceErrFromStatusCode(code int, status string, requestID, date, version 
 		RequestID:  requestID,
 		Date:       date,
 		APIVersion: version,
-		Message:    "no response body was available for error status code",
-	}
-}
-
-func serviceErrFromStatusCode(code int, status string, requestID string) AzureStorageServiceError {
-	return AzureStorageServiceError{
-		StatusCode: code,
-		Code:       status,
-		RequestID:  requestID,
 		Message:    "no response body was available for error status code",
 	}
 }

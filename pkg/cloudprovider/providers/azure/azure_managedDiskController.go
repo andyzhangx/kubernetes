@@ -63,7 +63,9 @@ func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccoun
 			CreationData: &disk.CreationData{CreateOption: disk.Empty},
 		}}
 	cancel := make(chan struct{})
-	_, err := c.common.cloud.DisksClient.CreateOrUpdate(c.common.resourceGroup, diskName, model, cancel)
+	respChan, errChan := c.common.cloud.DisksClient.CreateOrUpdate(c.common.resourceGroup, diskName, model, cancel)
+	<-respChan
+	err := <-errChan
 	if err != nil {
 		return "", err
 	}
@@ -98,7 +100,9 @@ func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccoun
 func (c *ManagedDiskController) DeleteManagedDisk(diskURI string) error {
 	diskName := path.Base(diskURI)
 	cancel := make(chan struct{})
-	_, err := c.common.cloud.DisksClient.Delete(c.common.resourceGroup, diskName, cancel)
+	respChan, errChan := c.common.cloud.DisksClient.Delete(c.common.resourceGroup, diskName, cancel)
+	<-respChan
+	err := <-errChan
 	if err != nil {
 		return err
 	}
