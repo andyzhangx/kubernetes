@@ -47,3 +47,13 @@ func (ds *dockerService) determinePodIPBySandboxID(uid string) string {
 	glog.Warningf("determinePodIPBySandboxID is unsupported in this build")
 	return ""
 }
+
+// Configure Infra Networking post Container Creation, before the container starts
+func (ds *dockerService) configureInfraContainerNetworkConfig(containerID string) {
+	// Do nothing
+}
+
+// Configure Infra Networking post Container Creation, after the container starts
+func (ds *DockerService) FinalizeInfraContainerNetwork(containerID string, DNS string) {
+	// Do nothing
+}

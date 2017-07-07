@@ -172,10 +172,18 @@ func (d *kubeDockerClient) RemoveContainer(id string, opts dockertypes.Container
 	return err
 }
 
+<<<<<<< HEAD
 func (d *kubeDockerClient) UpdateContainerResources(id string, updateConfig dockercontainer.UpdateConfig) error {
 	ctx, cancel := d.getTimeoutContext()
 	defer cancel()
 	_, err := d.client.ContainerUpdate(ctx, id, updateConfig)
+=======
+func (d *kubeDockerClient) ConnectNetwork(id string, containerID string, config *dockernetworktypes.EndpointSettings) error {
+
+	ctx, cancel := d.getTimeoutContext()
+	defer cancel()
+	err := d.client.NetworkConnect(ctx, id, containerID, config)
+>>>>>>> 5fc0a5e... Workaround for Outbound Internet traffic in Azure Kubernetes
 	if ctxErr := contextError(ctx); ctxErr != nil {
 		return ctxErr
 	}

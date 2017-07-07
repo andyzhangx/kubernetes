@@ -118,6 +118,11 @@ func (ds *dockerService) RunPodSandbox(config *runtimeapi.PodSandboxConfig) (id 
 		return createResp.ID, err
 	}
 
+	// Windows specific workaround to configure networking post container creation.
+	// Uncomment below once we have network namespace sharing is available
+	//if container.Name == PodInfraContainerName {
+	ds.configureInfraContainerNetworkConfig(createResp.ID)
+
 	// Step 4: Start the sandbox container.
 	// Assume kubelet's garbage collector would remove the sandbox later, if
 	// startContainer failed.
@@ -163,6 +168,18 @@ func (ds *dockerService) RunPodSandbox(config *runtimeapi.PodSandboxConfig) (id 
 			glog.Warningf("Failed to stop sandbox container %q for pod %q: %v", createResp.ID, config.Metadata.Name, err)
 		}
 	}
+
+	// Windows specific workaround to configure networking post container creation.
+	dns := ""
+	if dnsConfig := config.GetDnsConfig(); dnsConfig != nil {
+		if len(dnsConfig.Servers) > 0 {
+			dns = dnsConfig.Servers[0]
+		}
+	}
+
+	// Uncomment below once we have network namespace sharing is available
+	//if container.Name == PodInfraContainerName {
+	ds.FinalizeInfraContainerNetwork(createResp.ID, dns)
 	return createResp.ID, err
 }
 
