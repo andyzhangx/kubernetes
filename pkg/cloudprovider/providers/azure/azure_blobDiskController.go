@@ -183,7 +183,7 @@ func (c *BlobDiskController) createVHDBlobDisk(blobClient azstorage.BlobStorageC
 	vhdName = vhdName + ".vhd"
 
 	tags := make(map[string]string)
-	tags["created-by"] = "k8s-azure-DataDisk"
+	tags["createdby"] = "k8sAzureDataDisk"
 	glog.V(4).Infof("azureDisk - creating page blob %name in container %s account %s", vhdName, containerName, accountName)
 
 	blob := container.GetBlobReference(vhdName)
