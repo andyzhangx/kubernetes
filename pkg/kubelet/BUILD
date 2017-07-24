@@ -289,6 +289,7 @@ filegroup(
         "//pkg/kubelet/types:all-srcs",
         "//pkg/kubelet/util:all-srcs",
         "//pkg/kubelet/volumemanager:all-srcs",
+        "//pkg/kubelet/winstats:all-srcs",
     ],
     tags = ["automanaged"],
 )
