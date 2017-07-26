@@ -19,7 +19,6 @@ limitations under the License.
 package dockershim
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/blang/semver"
@@ -88,31 +87,6 @@ func (ds *dockerService) configureInfraContainerNetworkConfig(containerID string
 		netMode = "nat"
 	}
 	ds.client.ConnectNetwork(netMode, containerID, nil)
-}
-
-// Configure Infra Networking post Container Creation, after the container starts
-func (ds *dockerService) FinalizeInfraContainerNetwork(containerID string, DNS string) {
-	podGW := os.Getenv("POD_GW")
-	vipCidr := os.Getenv("VIP_CIDR")
-
-	// Execute the below inside the container
-	// Remove duplicate default gateway (0.0.0.0/0) because of 2 network endpoints
-	// Add a route to the Vip CIDR via the POD CIDR transparent network
-	pscmd := fmt.Sprintf("$ifIndex=(get-netroute -NextHop %s).IfIndex;", podGW) +
-		fmt.Sprintf("netsh interface ipv4 delete route 0.0.0.0/0 $ifIndex %s;", podGW) +
-		fmt.Sprintf("netsh interface ipv4 add route %s $ifIndex %s;", vipCidr, podGW)
-	if DNS != "" {
-		pscmd += fmt.Sprintf("Get-NetAdapter | foreach { netsh interface ipv4 set dns $_.ifIndex static none };")
-		pscmd += fmt.Sprintf("netsh interface ipv4 set dns $ifIndex static %s;", DNS)
-	}
-
-	cmd := []string{
-		"powershell.exe",
-		"-command",
-		pscmd,
-	}
-
-	ds.ExecSync(containerID, cmd, 30)
 }
 
 func getContainerIP(container *dockertypes.ContainerJSON) string {

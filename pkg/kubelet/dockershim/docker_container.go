@@ -168,6 +168,9 @@ func (ds *dockerService) CreateContainer(podSandboxID string, config *runtimeapi
 	}
 
 	if createResp != nil {
+		// Windows specific workaround to configure networking post container creation.
+		ds.configureInfraContainerNetworkConfig(createResp.ID)
+
 		return createResp.ID, err
 	}
 	return "", err

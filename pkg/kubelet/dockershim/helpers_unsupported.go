@@ -52,8 +52,3 @@ func (ds *dockerService) determinePodIPBySandboxID(uid string) string {
 func (ds *dockerService) configureInfraContainerNetworkConfig(containerID string) {
 	// Do nothing
 }
-
-// Configure Infra Networking post Container Creation, after the container starts
-func (ds *DockerService) FinalizeInfraContainerNetwork(containerID string, DNS string) {
-	// Do nothing
-}
