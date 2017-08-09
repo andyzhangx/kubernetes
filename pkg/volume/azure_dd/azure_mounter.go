@@ -79,7 +79,7 @@ func (m *azureDiskMounter) SetUpAt(dir string, fsGroup *int64) error {
 		return err
 	}
 	if !mountPoint {
-		return fmt.Errorf("azureDisk - Not a mounting point for disk %s on %s", diskName, dir)
+		glog.Infof("azureDisk - mounting point for disk %s on %s already exists, now continue", diskName, dir)
 	}
 
 	if err := os.MkdirAll(dir, 0750); err != nil {
