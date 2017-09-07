@@ -41,6 +41,7 @@ type Client struct {
 	memoryCommittedBytes        uint64
 	mu                          sync.Mutex
 	memoryPhysicalCapacityBytes uint64
+	timeStarted                 time.Time
 }
 
 // NewClient constructs a Client.
@@ -49,6 +50,7 @@ func NewClient() (*Client, error) {
 
 	dockerClient, _ := dockerapi.NewEnvClient()
 	client.dockerClient = dockerClient
+	client.timeStarted = time.Now()
 
 	// create physical memory
 	memory, err := getPhysicallyInstalledSystemMemoryBytes()
@@ -211,8 +213,9 @@ func (c *Client) createRootContainerInfo() *cadvisorapiv2.ContainerInfo {
 
 	rootInfo := cadvisorapiv2.ContainerInfo{
 		Spec: cadvisorapiv2.ContainerSpec{
-			HasCpu:    true,
-			HasMemory: true,
+			CreationTime: c.timeStarted,
+			HasCpu:       true,
+			HasMemory:    true,
 			Memory: cadvisorapiv2.MemorySpec{
 				Limit: c.memoryPhysicalCapacityBytes,
 			},
