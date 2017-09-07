@@ -281,10 +281,12 @@ func (c *Client) createContainerStats(container *dockertypes.Container) (*cadvis
 
 	stats := cadvisorapiv2.ContainerStats{
 		Timestamp: time.Now(),
-		Cpu:       &cadvisorapi.CpuStats{Usage: cadvisorapi.CpuUsage{Total: dockerStats.CPUStats.CPUUsage.TotalUsage}},
-		CpuInst:   &cadvisorapiv2.CpuInstStats{},
-		Memory:    &cadvisorapi.MemoryStats{WorkingSet: dockerStats.MemoryStats.PrivateWorkingSet, Usage: dockerStats.MemoryStats.Commit},
-		Network:   &cadvisorapiv2.NetworkStats{Interfaces: networkInterfaces},
+		// have to multiply cpu usage by 100 since docker stats units is in 100's of nano seconds for Windows
+		// see https://github.com/moby/moby/blob/master/api/types/stats.go#L22
+		Cpu:     &cadvisorapi.CpuStats{Usage: cadvisorapi.CpuUsage{Total: dockerStats.CPUStats.CPUUsage.TotalUsage * 100}},
+		CpuInst: &cadvisorapiv2.CpuInstStats{},
+		Memory:  &cadvisorapi.MemoryStats{WorkingSet: dockerStats.MemoryStats.PrivateWorkingSet, Usage: dockerStats.MemoryStats.Commit},
+		Network: &cadvisorapiv2.NetworkStats{Interfaces: networkInterfaces},
 		// TODO: ... diskio, filesystem, etc...
 	}
 	return &stats, nil
