@@ -22,7 +22,6 @@ import (
 	dockertypes "github.com/docker/docker/api/types"
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerimagetypes "github.com/docker/docker/api/types/image"
-        dockernetworktypes "github.com/docker/docker/api/types/network"
 	"k8s.io/kubernetes/pkg/kubelet/metrics"
 )
 
@@ -116,15 +115,6 @@ func (in instrumentedInterface) UpdateContainerResources(id string, updateConfig
 
 	err := in.client.UpdateContainerResources(id, updateConfig)
         recordError(operation, err)
-	return err
-}
-
-func (in instrumentedInterface) ConnectNetwork(id string, containerID string, config *dockernetworktypes.EndpointSettings) error {
-	const operation = "connect_network"
-	defer recordOperation(operation, time.Now())
-
-	err := in.client.ConnectNetwork(id, containerID, config)
-	recordError(operation, err)
 	return err
 }
 

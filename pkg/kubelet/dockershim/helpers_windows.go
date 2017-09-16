@@ -103,18 +103,12 @@ func getNetworkNamespace(c *dockertypes.ContainerJSON) (string, error) {
 }
 
 func getContainerIP(container *dockertypes.ContainerJSON) string {
-	ipFound := ""
-	containerNetworkName := os.Getenv("CONTAINER_NETWORK")
 	if container.NetworkSettings != nil {
-		for name, network := range container.NetworkSettings.Networks {
+		for _, network := range container.NetworkSettings.Networks {
 			if network.IPAddress != "" {
-				ipFound = network.IPAddress
-				if name == containerNetworkName {
-					return network.IPAddress
-				}
+				return network.IPAddress
 			}
 		}
 	}
-
-	return ipFound
+	return ""
 }
