@@ -9,8 +9,26 @@ load(
 
 go_library(
     name = "go_default_library",
-    srcs = ["statstypes.go"],
-    tags = ["automanaged"],
+    srcs = [
+        "statstypes.go",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "winstats.go",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+    ] + select({
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "//pkg/kubelet/network:go_default_library",
+            "//vendor/github.com/docker/docker/api/types:go_default_library",
+            "//vendor/github.com/docker/engine-api/client:go_default_library",
+            "//vendor/github.com/docker/engine-api/types:go_default_library",
+            "//vendor/github.com/google/cadvisor/info/v1:go_default_library",
+            "//vendor/github.com/google/cadvisor/info/v2:go_default_library",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 filegroup(
