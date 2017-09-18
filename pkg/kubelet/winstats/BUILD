@@ -9,16 +9,8 @@ load(
 
 go_library(
     name = "go_default_library",
-    srcs = ["winstats.go"],
+    srcs = ["statstypes.go"],
     tags = ["automanaged"],
-    deps = [
-        "//pkg/kubelet/network:go_default_library",
-        "//vendor/github.com/docker/docker/api/types:go_default_library",
-        "//vendor/github.com/docker/engine-api/client:go_default_library",
-        "//vendor/github.com/docker/engine-api/types:go_default_library",
-        "//vendor/github.com/google/cadvisor/info/v1:go_default_library",
-        "//vendor/github.com/google/cadvisor/info/v2:go_default_library",
-    ],
 )
 
 filegroup(

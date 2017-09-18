@@ -48,6 +48,7 @@ go_library(
         "//vendor/github.com/docker/engine-api/client:go_default_library",
         "//vendor/github.com/docker/engine-api/types:go_default_library",
         "//vendor/github.com/docker/engine-api/types/container:go_default_library",
+        "//vendor/github.com/docker/engine-api/types/network:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/golang.org/x/net/context:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",

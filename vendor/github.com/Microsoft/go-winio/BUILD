@@ -10,6 +10,7 @@ load(
 go_library(
     name = "go_default_library",
     srcs = [
+        "ea.go",
         "reparse.go",
         "syscall.go",
     ],
