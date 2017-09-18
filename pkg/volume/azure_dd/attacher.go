@@ -20,12 +20,13 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strconv"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"strconv"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
-	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/api/v1"
@@ -35,6 +36,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/keymutex"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
+	"github.com/golang/glog"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 )
 
@@ -170,9 +172,7 @@ func (a *azureDiskAttacher) WaitForAttach(spec *volume.Spec, devicePath string, 
 	newDevicePath := ""
 
 	err = wait.Poll(1*time.Second, timeout, func() (bool, error) {
-		exe := exec.New()
-
-		if newDevicePath, err = findDiskByLun(lun, io, exe); err != nil {
+		if newDevicePath, err = findDiskByLun(lun, io); err != nil {
 			return false, fmt.Errorf("azureDisk - WaitForAttach ticker failed node (%s) disk (%s) lun(%v) err(%s)", nodeName, diskName, lun, err)
 		}
 
@@ -216,7 +216,12 @@ func (attacher *azureDiskAttacher) MountDevice(spec *volume.Spec, devicePath str
 
 	if err != nil {
 		if os.IsNotExist(err) {
-			if err := os.MkdirAll(deviceMountPath, 0750); err != nil {
+			dir := deviceMountPath
+			if runtime.GOOS == "windows" {
+				// in windows, as we use mklink, only need to MkdirAll for parent directory
+				dir = filepath.Dir(deviceMountPath)
+			}
+			if err := os.MkdirAll(dir, 0750); err != nil {
 				return fmt.Errorf("azureDisk - mountDevice:CreateDirectory failed with %s", err)
 			}
 			notMnt = true

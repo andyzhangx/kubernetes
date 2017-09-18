@@ -19,6 +19,7 @@ package azure_dd
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -126,9 +127,15 @@ func TestIoHandler(t *testing.T) {
 			func(cmd string, args ...string) exec.Cmd { return exec.InitFakeCmd(&fcmd, cmd, args...) },
 		},
 	}
-	disk, err := findDiskByLun(lun, &fakeIOHandler{}, &fake)
-	// if no disk matches lun, exit
-	if disk != "/dev/"+devName || err != nil {
-		t.Errorf("no data disk found: disk %v err %v", disk, err)
-	}
+       disk, err := findDiskByLun(lun, &fakeIOHandler{})
+       if runtime.GOOS == "windows" {
+               if err != nil {
+                       t.Errorf("no data disk found: disk %v err %v", disk, err)
+               }
+       } else {
+               // if no disk matches lun, exit
+               if disk != "/dev/"+devName || err != nil {
+                       t.Errorf("no data disk found: disk %v err %v", disk, err)
+               }
+        }
 }
