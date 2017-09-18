@@ -31,7 +31,6 @@ import (
 
 	dockertypes "github.com/docker/engine-api/types"
 	dockercontainer "github.com/docker/engine-api/types/container"
-        dockernetworktypes "github.com/docker/engine-api/types/network"
 
 	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/kubernetes/pkg/api/v1"
@@ -624,19 +623,6 @@ func (f *FakeDockerClient) RemoveContainer(id string, opts dockertypes.Container
 	}
 	// To be a good fake, report error if container is not stopped.
 	return fmt.Errorf("container not stopped")
-}
-
-func (f *FakeDockerClient) ConnectNetwork(id string, containerID string, config *dockernetworktypes.EndpointSettings) error {
-	f.Lock()
-	defer f.Unlock()
-	f.called = append(f.called, calledDetail{name: "connect"})
-	err := f.popError("connect")
-	if err != nil {
-		return err
-	}
-	// TBD
-	// To be a good fake, report error if container is not stopped.
-	return nil
 }
 
 // Logs is a test-spy implementation of Interface.Logs.

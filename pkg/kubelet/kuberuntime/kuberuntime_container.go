@@ -23,7 +23,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	goruntime "runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -140,11 +139,6 @@ func (m *kubeGenericRuntimeManager) startContainer(podSandboxID string, podSandb
 			legacySymlink, containerID, containerLog, err)
 	}
 
-	// Windows specific workaround to configure networking post container creation.
-	if goruntime.GOOS == "windows" {
-		m.finalizeInfraContainerNetwork(containerID, podSandboxConfig, pod)
-	}
-
 	// Step 4: execute the post start hook.
 	if container.Lifecycle != nil && container.Lifecycle.PostStart != nil {
 		kubeContainerID := kubecontainer.ContainerID{
@@ -160,41 +154,6 @@ func (m *kubeGenericRuntimeManager) startContainer(podSandboxID string, podSandb
 	}
 
 	return "", nil
-}
-
-func (m *kubeGenericRuntimeManager) finalizeInfraContainerNetwork(containerID string, config *runtimeapi.PodSandboxConfig, pod *v1.Pod) {
-	if goruntime.GOOS == "windows" {
-		// Windows specific workaround to configure networking post container creation.
-                useClusterFirstPolicy := ((pod.Spec.DNSPolicy == v1.DNSClusterFirst && !kubecontainer.IsHostNetworkPod(pod)) || pod.Spec.DNSPolicy == v1.DNSClusterFirstWithHostNet)
-		dns := ""
-		if dnsConfig := config.GetDnsConfig(); dnsConfig != nil {
-			if useClusterFirstPolicy && len(dnsConfig.Servers) > 0 {
-				dns = dnsConfig.Servers[0]
-			}
-		}
-
-		podGW := os.Getenv("POD_GW")
-		vipCidr := os.Getenv("VIP_CIDR")
-
-		// Execute the below inside the container
-		// Remove duplicate default gateway (0.0.0.0/0) because of 2 network endpoints
-		// Add a route to the Vip CIDR via the POD CIDR transparent network
-		pscmd := fmt.Sprintf("$ifIndex=(get-netroute -NextHop %s).IfIndex;", podGW) +
-			fmt.Sprintf("netsh interface ipv4 delete route 0.0.0.0/0 $ifIndex %s;", podGW) +
-			fmt.Sprintf("netsh interface ipv4 add route %s $ifIndex %s;", vipCidr, podGW)
-		if dns != "" {
-			pscmd += fmt.Sprintf("Get-NetAdapter | foreach { netsh interface ipv4 set dns $_.ifIndex static none };")
-			pscmd += fmt.Sprintf("netsh interface ipv4 set dns $ifIndex static %s;", dns)
-		}
-
-		cmd := []string{
-			"powershell.exe",
-			"-command",
-			pscmd,
-		}
-
-		m.runtimeService.ExecSync(containerID, cmd, 30)
-	}
 }
 
 // generateContainerConfig generates container config for kubelet runtime v1.
