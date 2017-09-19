@@ -19,6 +19,7 @@ limitations under the License.
 package dockershim
 
 import (
+	"fmt"
 	"github.com/blang/semver"
 	dockertypes "github.com/docker/engine-api/types"
 	"github.com/golang/glog"
