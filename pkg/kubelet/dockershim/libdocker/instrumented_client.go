@@ -22,6 +22,7 @@ import (
 	dockertypes "github.com/docker/docker/api/types"
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerimagetypes "github.com/docker/docker/api/types/image"
+        dockernetworktypes "github.com/docker/docker/api/types/network"
 	"k8s.io/kubernetes/pkg/kubelet/metrics"
 )
 
@@ -109,19 +110,20 @@ func (in instrumentedInterface) RemoveContainer(id string, opts dockertypes.Cont
 	return err
 }
 
-<<<<<<< HEAD
 func (in instrumentedInterface) UpdateContainerResources(id string, updateConfig dockercontainer.UpdateConfig) error {
 	const operation = "update_container"
 	defer recordOperation(operation, time.Now())
 
 	err := in.client.UpdateContainerResources(id, updateConfig)
-=======
+        recordError(operation, err)
+	return err
+}
+
 func (in instrumentedInterface) ConnectNetwork(id string, containerID string, config *dockernetworktypes.EndpointSettings) error {
 	const operation = "connect_network"
 	defer recordOperation(operation, time.Now())
 
 	err := in.client.ConnectNetwork(id, containerID, config)
->>>>>>> 5fc0a5e... Workaround for Outbound Internet traffic in Azure Kubernetes
 	recordError(operation, err)
 	return err
 }

@@ -23,6 +23,7 @@ import (
 	dockertypes "github.com/docker/docker/api/types"
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerimagetypes "github.com/docker/docker/api/types/image"
+        dockernetworktypes "github.com/docker/docker/api/types/network"
 	dockerapi "github.com/docker/docker/client"
 	"github.com/golang/glog"
 )
