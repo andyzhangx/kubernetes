@@ -40,6 +40,7 @@ go_library(
         "//vendor/github.com/docker/docker/api/types:go_default_library",
         "//vendor/github.com/docker/docker/api/types/container:go_default_library",
         "//vendor/github.com/docker/docker/api/types/image:go_default_library",
+        "//vendor/github.com/docker/docker/api/types/network:go_default_library",
         "//vendor/github.com/docker/docker/client:go_default_library",
         "//vendor/github.com/docker/docker/pkg/jsonmessage:go_default_library",
         "//vendor/github.com/docker/docker/pkg/stdcopy:go_default_library",
