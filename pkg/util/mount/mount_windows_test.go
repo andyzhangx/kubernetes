@@ -24,8 +24,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestNormalizeWindowsPath(t *testing.T) {
