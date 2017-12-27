@@ -937,7 +937,11 @@ func printAzureDiskVolumeSource(d *api.AzureDiskVolumeSource, w PrefixWriter) {
 		"    FSType:\t%v\n"+
 		"    CachingMode:\t%v\n"+
 		"    ReadOnly:\t%v\n",
-		d.DiskName, d.DataDiskURI, *d.Kind, *d.FSType, *d.CachingMode, *d.ReadOnly)
+		"    SecretVault:\t%v\n",
+		"    SecretURL:\t%v\n",
+		"    KekVault:\t%v\n",
+		"    KekURL:\t%v\n",
+		d.DiskName, d.DataDiskURI, *d.Kind, *d.FSType, *d.CachingMode, *d.ReadOnly, d.SecretVault, d.SecretURL, d.KekVault, d.KekURL)
 }
 
 func printVsphereVolumeSource(vsphere *api.VsphereVirtualDiskVolumeSource, w PrefixWriter) {

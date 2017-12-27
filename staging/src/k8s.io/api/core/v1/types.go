@@ -1462,6 +1462,18 @@ type AzureDiskVolumeSource struct {
 	ReadOnly *bool `json:"readOnly,omitempty" protobuf:"varint,5,opt,name=readOnly"`
 	// Expected values Shared: multiple blob disks per storage account  Dedicated: single blob disk per storage account  Managed: azure managed data disk (only in managed availability set). defaults to shared
 	Kind *AzureDataDiskKind `json:"kind,omitempty" protobuf:"bytes,6,opt,name=kind,casttype=AzureDataDiskKind"`
+	// The secret vault ID of DiskEncryptionKey
+	// +optional
+	SecretVault string `json:"secretVault,omitempty" protobuf:"bytes,7,opt,name=secretVault"`
+	// The secret URL of DiskEncryptionKey
+	// +optional
+	SecretURL string `json:"secretURL,omitempty" protobuf:"bytes,8,opt,name=secretURL"`
+	// The secret vault ID of KeyEncryptionKey
+	// +optional
+	KekVault string `json:"kekVault,omitempty" protobuf:"bytes,9,opt,name=kekVault"`
+	// The secret URL of KeyEncryptionKey
+	// +optional
+	KekURL string `json:"kekURL,omitempty" protobuf:"bytes,10,opt,name=kekURL"`
 }
 
 // PortworxVolumeSource represents a Portworx volume resource.

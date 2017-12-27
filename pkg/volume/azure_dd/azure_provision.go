@@ -91,6 +91,8 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 		cachingMode                v1.AzureDataDiskCachingMode
 		strKind                    string
 		err                        error
+		secretVault, secretURL     string
+		kekVault, kekURL           string
 	)
 	// maxLength = 79 - (4 for ".vhd") = 75
 	name := volume.GenerateVolumeName(p.options.ClusterName, p.options.PVName, 75)
@@ -114,6 +116,14 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 			cachingMode = v1.AzureDataDiskCachingMode(v)
 		case volume.VolumeParameterFSType:
 			fsType = strings.ToLower(v)
+		case "secretVault":
+			secretVault = v
+		case "secretURL":
+			secretURL = v
+		case "kekVault":
+			kekVault = v
+		case "kekURL":
+			kekURL = v
 		default:
 			return nil, fmt.Errorf("AzureDisk - invalid option %s in storage class", k)
 		}
@@ -143,7 +153,7 @@ func (p *azureDiskProvisioner) Provision() (*v1.PersistentVolume, error) {
 	// create disk
 	diskURI := ""
 	if kind == v1.AzureManagedDisk {
-		diskURI, err = diskController.CreateManagedDisk(name, skuName, requestGB, *(p.options.CloudTags))
+		diskURI, err = diskController.CreateManagedDisk(name, skuName, requestGB, secretVault, secretURL, kekVault, kekURL, *(p.options.CloudTags))
 		if err != nil {
 			return nil, err
 		}

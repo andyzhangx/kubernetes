@@ -1368,6 +1368,18 @@ type AzureDiskVolumeSource struct {
 	ReadOnly *bool
 	// Expected values Shared: multiple blob disks per storage account  Dedicated: single blob disk per storage account  Managed: azure managed data disk (only in managed availability set). defaults to shared
 	Kind *AzureDataDiskKind
+	// The secret vault ID of DiskEncryptionKey
+	// +optional
+	SecretVault string
+	// The secret URL of DiskEncryptionKey
+	// +optional
+	SecretURL string
+	// The secret vault ID of KeyEncryptionKey
+	// +optional
+	KekVault string
+	// The secret URL of KeyEncryptionKey
+	// +optional
+	KekURL string
 }
 
 // ScaleIOVolumeSource represents a persistent ScaleIO volume

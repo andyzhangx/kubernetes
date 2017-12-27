@@ -22,6 +22,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/arm/disk"
 	storage "github.com/Azure/azure-sdk-for-go/arm/storage"
+	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/glog"
 	kwait "k8s.io/apimachinery/pkg/util/wait"
 )
@@ -36,7 +37,8 @@ func newManagedDiskController(common *controllerCommon) (*ManagedDiskController,
 }
 
 //CreateManagedDisk : create managed disk
-func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccountType storage.SkuName, sizeGB int, tags map[string]string) (string, error) {
+func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccountType storage.SkuName, sizeGB int,
+	secretVault, secretURL, kekVault, kekURL string, tags map[string]string) (string, error) {
 	glog.V(4).Infof("azureDisk - creating new managed Name:%s StorageAccountType:%s Size:%v", diskName, storageAccountType, sizeGB)
 
 	newTags := make(map[string]*string)
@@ -53,14 +55,39 @@ func (c *ManagedDiskController) CreateManagedDisk(diskName string, storageAccoun
 		}
 	}
 
+	// set azure disk encryption settings
+	encryptionSettings := &disk.EncryptionSettings{Enabled: to.BoolPtr(false)}
+	if secretVault != "" && secretURL != "" {
+		encryptionSettings = &disk.EncryptionSettings{
+			Enabled: to.BoolPtr(true),
+			DiskEncryptionKey: &disk.KeyVaultAndSecretReference{
+				SourceVault: &disk.SourceVault{
+					ID: to.StringPtr(secretVault),
+				},
+				SecretURL: to.StringPtr(secretURL),
+			},
+		}
+
+		if kekURL != "" {
+			encryptionSettings.KeyEncryptionKey.KeyURL = to.StringPtr(kekURL)
+			if kekVault != "" {
+				encryptionSettings.KeyEncryptionKey.SourceVault = &disk.SourceVault{ID: to.StringPtr(secretVault)}
+			} else {
+				// if kek Vault not set, use secretVault by default
+				encryptionSettings.KeyEncryptionKey.SourceVault = encryptionSettings.DiskEncryptionKey.SourceVault
+			}
+		}
+	}
+
 	diskSizeGB := int32(sizeGB)
 	model := disk.Model{
 		Location: &c.common.location,
 		Tags:     &newTags,
 		Properties: &disk.Properties{
-			AccountType:  disk.StorageAccountTypes(storageAccountType),
-			DiskSizeGB:   &diskSizeGB,
-			CreationData: &disk.CreationData{CreateOption: disk.Empty},
+			AccountType:        disk.StorageAccountTypes(storageAccountType),
+			DiskSizeGB:         &diskSizeGB,
+			CreationData:       &disk.CreationData{CreateOption: disk.Empty},
+			EncryptionSettings: encryptionSettings,
 		}}
 	cancel := make(chan struct{})
 	respChan, errChan := c.common.cloud.DisksClient.CreateOrUpdate(c.common.resourceGroup, diskName, model, cancel)
