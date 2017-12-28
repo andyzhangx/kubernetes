@@ -139,24 +139,6 @@ func (c *Client) WinContainerInfos() (map[string]cadvisorapiv2.ContainerInfo, er
 	// root (node) container
 	infos["/"] = *c.createRootContainerInfo()
 
-	containers, err := c.dockerClient.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
-
-	if err != nil {
-		return nil, err
-	}
-
-	for idx := range containers {
-		container := &containers[idx]
-
-		containerInfo, err := c.createContainerInfo(container)
-
-		if err != nil {
-			return nil, err
-		}
-
-		infos[container.ID] = *containerInfo
-	}
-
 	return infos, nil
 }
 
