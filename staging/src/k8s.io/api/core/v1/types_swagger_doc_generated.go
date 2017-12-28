@@ -77,6 +77,10 @@ var map_AzureDiskVolumeSource = map[string]string{
 	"fsType":      "Filesystem type to mount. Must be a filesystem type supported by the host operating system. Ex. \"ext4\", \"xfs\", \"ntfs\". Implicitly inferred to be \"ext4\" if unspecified.",
 	"readOnly":    "Defaults to false (read/write). ReadOnly here will force the ReadOnly setting in VolumeMounts.",
 	"kind":        "Expected values Shared: multiple blob disks per storage account  Dedicated: single blob disk per storage account  Managed: azure managed data disk (only in managed availability set). defaults to shared",
+	"secretVault": "The secret vault ID of DiskEncryptionKey",
+	"secretURL":   "The secret URL of DiskEncryptionKey",
+	"kekVault":    "The secret vault ID of KeyEncryptionKey",
+	"kekURL":      "The secret URL of KeyEncryptionKey",
 }
 
 func (AzureDiskVolumeSource) SwaggerDoc() map[string]string {

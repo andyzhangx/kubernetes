@@ -123,6 +123,22 @@ message AzureDiskVolumeSource {
 
   // Expected values Shared: multiple blob disks per storage account  Dedicated: single blob disk per storage account  Managed: azure managed data disk (only in managed availability set). defaults to shared
   optional string kind = 6;
+
+  // The secret vault ID of DiskEncryptionKey
+  // +optional
+  optional string secretVault = 7;
+
+  // The secret URL of DiskEncryptionKey
+  // +optional
+  optional string secretURL = 8;
+
+  // The secret vault ID of KeyEncryptionKey
+  // +optional
+  optional string kekVault = 9;
+
+  // The secret URL of KeyEncryptionKey
+  // +optional
+  optional string kekURL = 10;
 }
 
 // AzureFile represents an Azure File Service mount on the host and bind mount to the pod.

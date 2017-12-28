@@ -515,6 +515,10 @@ func autoConvert_v1_AzureDiskVolumeSource_To_core_AzureDiskVolumeSource(in *v1.A
 	out.FSType = (*string)(unsafe.Pointer(in.FSType))
 	out.ReadOnly = (*bool)(unsafe.Pointer(in.ReadOnly))
 	out.Kind = (*core.AzureDataDiskKind)(unsafe.Pointer(in.Kind))
+	out.SecretVault = in.SecretVault
+	out.SecretURL = in.SecretURL
+	out.KekVault = in.KekVault
+	out.KekURL = in.KekURL
 	return nil
 }
 
@@ -530,6 +534,10 @@ func autoConvert_core_AzureDiskVolumeSource_To_v1_AzureDiskVolumeSource(in *core
 	out.FSType = (*string)(unsafe.Pointer(in.FSType))
 	out.ReadOnly = (*bool)(unsafe.Pointer(in.ReadOnly))
 	out.Kind = (*v1.AzureDataDiskKind)(unsafe.Pointer(in.Kind))
+	out.SecretVault = in.SecretVault
+	out.SecretURL = in.SecretURL
+	out.KekVault = in.KekVault
+	out.KekURL = in.KekURL
 	return nil
 }
 

@@ -21162,6 +21162,22 @@
      "kind": {
       "$ref": "v1.AzureDataDiskKind",
       "description": "Expected values Shared: multiple blob disks per storage account  Dedicated: single blob disk per storage account  Managed: azure managed data disk (only in managed availability set). defaults to shared"
+     },
+     "secretVault": {
+      "type": "string",
+      "description": "The secret vault ID of DiskEncryptionKey"
+     },
+     "secretURL": {
+      "type": "string",
+      "description": "The secret URL of DiskEncryptionKey"
+     },
+     "kekVault": {
+      "type": "string",
+      "description": "The secret vault ID of KeyEncryptionKey"
+     },
+     "kekURL": {
+      "type": "string",
+      "description": "The secret URL of KeyEncryptionKey"
      }
     }
    },

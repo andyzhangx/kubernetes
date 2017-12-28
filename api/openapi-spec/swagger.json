@@ -74428,6 +74428,14 @@
       "description": "Filesystem type to mount. Must be a filesystem type supported by the host operating system. Ex. \"ext4\", \"xfs\", \"ntfs\". Implicitly inferred to be \"ext4\" if unspecified.",
       "type": "string"
      },
+     "kekURL": {
+      "description": "The secret URL of KeyEncryptionKey",
+      "type": "string"
+     },
+     "kekVault": {
+      "description": "The secret vault ID of KeyEncryptionKey",
+      "type": "string"
+     },
      "kind": {
       "description": "Expected values Shared: multiple blob disks per storage account  Dedicated: single blob disk per storage account  Managed: azure managed data disk (only in managed availability set). defaults to shared",
       "type": "string"
@@ -74435,6 +74443,14 @@
      "readOnly": {
       "description": "Defaults to false (read/write). ReadOnly here will force the ReadOnly setting in VolumeMounts.",
       "type": "boolean"
+     },
+     "secretURL": {
+      "description": "The secret URL of DiskEncryptionKey",
+      "type": "string"
+     },
+     "secretVault": {
+      "description": "The secret vault ID of DiskEncryptionKey",
+      "type": "string"
      }
     }
    },
