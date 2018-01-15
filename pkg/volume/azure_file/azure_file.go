@@ -256,6 +256,11 @@ func (b *azureFileMounter) SetUpAt(dir string, fsGroup *int64) error {
 		os.Remove(dir)
 		return err
 	}
+
+	if !b.readOnly {
+		volume.SetVolumeOwnership(b, fsGroup)
+	}
+
 	return nil
 }
 
