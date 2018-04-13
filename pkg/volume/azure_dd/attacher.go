@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
@@ -150,9 +151,16 @@ func (a *azureDiskAttacher) VolumesAreAttached(specs []*volume.Spec, nodeName ty
 
 func (a *azureDiskAttacher) WaitForAttach(spec *volume.Spec, devicePath string, _ *v1.Pod, timeout time.Duration) (string, error) {
 	var err error
-	lun, err := strconv.Atoi(devicePath)
-	if err != nil {
-		return "", fmt.Errorf("azureDisk - Wait for attach expect device path as a lun number, instead got: %s (%v)", devicePath, err)
+	newDevicePath := ""
+	lun := -1
+
+	if strings.HasPrefix(devicePath, "/dev/") {
+		newDevicePath = devicePath
+	} else {
+		lun, err = strconv.Atoi(devicePath)
+		if err != nil {
+			return "", fmt.Errorf("azureDisk - Wait for attach expect device path as a lun number, instead got: %s (%v)", devicePath, err)
+		}
 	}
 
 	volumeSource, err := getVolumeSource(spec)
@@ -167,18 +175,15 @@ func (a *azureDiskAttacher) WaitForAttach(spec *volume.Spec, devicePath string, 
 
 	diskName := volumeSource.DiskName
 	nodeName := a.plugin.host.GetHostName()
-	newDevicePath := ""
 
 	err = wait.Poll(1*time.Second, timeout, func() (bool, error) {
-		if newDevicePath, err = findDiskByLun(lun, io, exec); err != nil {
-			return false, fmt.Errorf("azureDisk - WaitForAttach ticker failed node (%s) disk (%s) lun(%v) err(%s)", nodeName, diskName, lun, err)
+		if newDevicePath == "" {
+			if newDevicePath, err = findDiskByLun(lun, io, exec); err != nil {
+				return false, fmt.Errorf("azureDisk - WaitForAttach ticker failed node (%s) disk (%s) lun(%v) err(%s)", nodeName, diskName, lun, err)
+			}
 		}
 
-		// did we find it?
 		if newDevicePath != "" {
-			// the current sequence k8s uses for unformated disk (check-disk, mount, fail, mkfs.extX) hangs on
-			// Azure Managed disk scsi interface. this is a hack and will be replaced once we identify and solve
-			// the root case on Azure.
 			formatIfNotFormatted(newDevicePath, *volumeSource.FSType, exec)
 			return true, nil
 		}
