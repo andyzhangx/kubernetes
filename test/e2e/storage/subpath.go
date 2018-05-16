@@ -39,13 +39,11 @@ import (
 )
 
 var (
-	volumePath      = "/test-volume"
-	volumeName      = "test-volume"
-	probeVolumePath = "/probe-volume"
-	probeFilePath   = probeVolumePath + "/probe-file"
-	fileName        = "test-file"
-	retryDuration   = 10
-	mountImage      = imageutils.GetE2EImage(imageutils.Mounttest)
+	volumePath    = "/test-volume"
+	volumeName    = "test-volume"
+	fileName      = "test-file"
+	retryDuration = 180
+	mountImage    = imageutils.GetE2EImage(imageutils.Mounttest)
 )
 
 type volInfo struct {
@@ -96,47 +94,109 @@ var _ = SIGDescribe("Subpath", func() {
 			secret := &v1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "my-secret"}, Data: map[string][]byte{"secret-key": []byte("secret-value")}}
 			secret, err = f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Create(secret)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
-				Expect(err).ToNot(HaveOccurred(), "while creating secret")
+				Expect(err).ToNot(HaveOccurred())
 			}
 
 			configmap := &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "my-configmap"}, Data: map[string]string{"configmap-key": "configmap-value"}}
 			configmap, err = f.ClientSet.CoreV1().ConfigMaps(f.Namespace.Name).Create(configmap)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
-				Expect(err).ToNot(HaveOccurred(), "while creating configmap")
+				Expect(err).ToNot(HaveOccurred())
 			}
 		})
 
+		gracePeriod := int64(1)
+
 		It("should support subpaths with secret pod", func() {
-			pod := testPodSubpath(f, "secret-key", "secret", &v1.VolumeSource{Secret: &v1.SecretVolumeSource{SecretName: "my-secret"}})
-			testBasicSubpath(f, "secret-value", pod)
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "pod-subpath-test-secret"},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{{
+						Name:         "test",
+						Image:        mountImage,
+						Args:         []string{"--file_content=" + volumePath},
+						VolumeMounts: []v1.VolumeMount{{Name: "secret", MountPath: volumePath, SubPath: "secret-key"}},
+					}},
+					RestartPolicy:                 v1.RestartPolicyNever,
+					TerminationGracePeriodSeconds: &gracePeriod,
+					Volumes: []v1.Volume{{Name: "secret", VolumeSource: v1.VolumeSource{Secret: &v1.SecretVolumeSource{SecretName: "my-secret"}}}},
+				},
+			}
+			By(fmt.Sprintf("Creating pod %s", pod.Name))
+			f.TestContainerOutput("secret", pod, 0, []string{"secret-value"})
 		})
 
 		It("should support subpaths with configmap pod", func() {
-			pod := testPodSubpath(f, "configmap-key", "configmap", &v1.VolumeSource{ConfigMap: &v1.ConfigMapVolumeSource{LocalObjectReference: v1.LocalObjectReference{Name: "my-configmap"}}})
-			testBasicSubpath(f, "configmap-value", pod)
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "pod-subpath-test-configmap"},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{{
+						Name:         "test",
+						Image:        mountImage,
+						Args:         []string{"--file_content=" + volumePath},
+						VolumeMounts: []v1.VolumeMount{{Name: "configmap", MountPath: volumePath, SubPath: "configmap-key"}},
+					}},
+					RestartPolicy:                 v1.RestartPolicyNever,
+					TerminationGracePeriodSeconds: &gracePeriod,
+					Volumes: []v1.Volume{{Name: "configmap", VolumeSource: v1.VolumeSource{ConfigMap: &v1.ConfigMapVolumeSource{LocalObjectReference: v1.LocalObjectReference{Name: "my-configmap"}}}}},
+				},
+			}
+			By(fmt.Sprintf("Creating pod %s", pod.Name))
+			f.TestContainerOutput("configmap", pod, 0, []string{"configmap-value"})
 		})
 
 		It("should support subpaths with downward pod", func() {
-			pod := testPodSubpath(f, "downward/podname", "downwardAPI", &v1.VolumeSource{
-				DownwardAPI: &v1.DownwardAPIVolumeSource{
-					Items: []v1.DownwardAPIVolumeFile{{Path: "downward/podname", FieldRef: &v1.ObjectFieldSelector{APIVersion: "v1", FieldPath: "metadata.name"}}},
-				},
-			})
-			testBasicSubpath(f, pod.Name, pod)
-		})
-
-		It("should support subpaths with projected pod", func() {
-			pod := testPodSubpath(f, "projected/configmap-key", "projected", &v1.VolumeSource{
-				Projected: &v1.ProjectedVolumeSource{
-					Sources: []v1.VolumeProjection{
-						{ConfigMap: &v1.ConfigMapProjection{
-							LocalObjectReference: v1.LocalObjectReference{Name: "my-configmap"},
-							Items:                []v1.KeyToPath{{Path: "projected/configmap-key", Key: "configmap-key"}},
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "pod-subpath-test-downward"},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{{
+						Name:         "test",
+						Image:        mountImage,
+						Args:         []string{"--file_content=" + volumePath},
+						VolumeMounts: []v1.VolumeMount{{Name: "downward", MountPath: volumePath, SubPath: "downward/podname"}},
+					}},
+					RestartPolicy:                 v1.RestartPolicyNever,
+					TerminationGracePeriodSeconds: &gracePeriod,
+					Volumes: []v1.Volume{
+						{Name: "downward", VolumeSource: v1.VolumeSource{
+							DownwardAPI: &v1.DownwardAPIVolumeSource{
+								Items: []v1.DownwardAPIVolumeFile{{Path: "downward/podname", FieldRef: &v1.ObjectFieldSelector{APIVersion: "v1", FieldPath: "metadata.name"}}},
+							},
 						}},
 					},
 				},
-			})
-			testBasicSubpath(f, "configmap-value", pod)
+			}
+			By(fmt.Sprintf("Creating pod %s", pod.Name))
+			f.TestContainerOutput("downward", pod, 0, []string{"content of file \"" + volumePath + "\": " + pod.Name})
+		})
+
+		It("should support subpaths with projected pod", func() {
+			pod := &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "pod-subpath-test-secret"},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{{
+						Name:         "test",
+						Image:        mountImage,
+						Args:         []string{"--file_content=" + volumePath},
+						VolumeMounts: []v1.VolumeMount{{Name: "projected", MountPath: volumePath, SubPath: "projected/configmap-key"}},
+					}},
+					RestartPolicy:                 v1.RestartPolicyNever,
+					TerminationGracePeriodSeconds: &gracePeriod,
+					Volumes: []v1.Volume{
+						{Name: "projected", VolumeSource: v1.VolumeSource{
+							Projected: &v1.ProjectedVolumeSource{
+								Sources: []v1.VolumeProjection{
+									{ConfigMap: &v1.ConfigMapProjection{
+										LocalObjectReference: v1.LocalObjectReference{Name: "my-configmap"},
+										Items:                []v1.KeyToPath{{Path: "projected/configmap-key", Key: "configmap-key"}},
+									}},
+								},
+							},
+						}},
+					},
+				},
+			}
+			By(fmt.Sprintf("Creating pod %s", pod.Name))
+			f.TestContainerOutput("projected", pod, 0, []string{"configmap-value"})
 		})
 	})
 
@@ -153,14 +213,15 @@ var _ = SIGDescribe("Subpath", func() {
 				filePathInSubpath = filepath.Join(volumePath, fileName)
 				filePathInVolume = filepath.Join(subPathDir, fileName)
 				volInfo := vol.createVolume(f)
-				pod = testPodSubpath(f, subPath, curVolType, volInfo.source)
+				pod = testPodSubpath(subPath, curVolType, volInfo.source)
+				pod.Namespace = f.Namespace.Name
 				pod.Spec.NodeName = volInfo.node
 			})
 
 			AfterEach(func() {
 				By("Deleting pod")
 				err := framework.DeletePodWithWait(f, f.ClientSet, pod)
-				Expect(err).ToNot(HaveOccurred(), "while deleting pod")
+				Expect(err).ToNot(HaveOccurred())
 
 				By("Cleaning up volume")
 				vol.cleanupVolume(f)
@@ -191,13 +252,6 @@ var _ = SIGDescribe("Subpath", func() {
 
 				// Read it from inside the subPath from container 0
 				testReadFile(f, filePathInSubpath, pod, 0)
-			})
-
-			It("should support file as subpath", func() {
-				// Create the file in the init container
-				setInitCommand(pod, fmt.Sprintf("echo %s > %s", f.Namespace.Name, subPathDir))
-
-				testBasicSubpath(f, f.Namespace.Name, pod)
 			})
 
 			It("should fail if subpath directory is outside the volume [Slow]", func() {
@@ -254,18 +308,11 @@ var _ = SIGDescribe("Subpath", func() {
 				testMultipleReads(f, pod, 0, filepath1, filepath2)
 			})
 
-			It("should support restarting containers using directory as subpath [Slow]", func() {
+			It("should support restarting containers [Slow]", func() {
 				// Create the directory
-				setInitCommand(pod, fmt.Sprintf("mkdir -p %v; touch %v", subPathDir, probeFilePath))
+				setInitCommand(pod, fmt.Sprintf("mkdir -p %v", subPathDir))
 
-				testPodContainerRestart(f, pod)
-			})
-
-			It("should support restarting containers using file as subpath [Slow]", func() {
-				// Create the file
-				setInitCommand(pod, fmt.Sprintf("touch %v; touch %v", subPathDir, probeFilePath))
-
-				testPodContainerRestart(f, pod)
+				testPodContainerRestart(f, pod, filePathInVolume, filePathInSubpath)
 			})
 
 			It("should unmount if pod is gracefully deleted while kubelet is down [Disruptive][Slow]", func() {
@@ -324,28 +371,13 @@ var _ = SIGDescribe("Subpath", func() {
 	// TODO: add a test case for the same disk with two partitions
 })
 
-func testBasicSubpath(f *framework.Framework, contents string, pod *v1.Pod) {
-	setReadCommand(volumePath, &pod.Spec.Containers[0])
-
-	By(fmt.Sprintf("Creating pod %s", pod.Name))
-	f.TestContainerOutput("atomic-volume-subpath", pod, 0, []string{contents})
-
-	By(fmt.Sprintf("Deleting pod %s", pod.Name))
-	err := framework.DeletePodWithWait(f, f.ClientSet, pod)
-	Expect(err).NotTo(HaveOccurred(), "while deleting pod")
-}
-
-func testPodSubpath(f *framework.Framework, subpath, volumeType string, source *v1.VolumeSource) *v1.Pod {
-	var (
-		suffix          = strings.ToLower(fmt.Sprintf("%s-%s", volumeType, rand.String(4)))
-		privileged      = true
-		gracePeriod     = int64(1)
-		probeVolumeName = "liveness-probe-volume"
-	)
+func testPodSubpath(subpath, volumeType string, source *v1.VolumeSource) *v1.Pod {
+	suffix := strings.ToLower(fmt.Sprintf("%s-%s", volumeType, rand.String(4)))
+	privileged := true
+	gracePeriod := int64(1)
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("pod-subpath-test-%s", suffix),
-			Namespace: f.Namespace.Name,
+			Name: fmt.Sprintf("pod-subpath-test-%s", suffix),
 		},
 		Spec: v1.PodSpec{
 			InitContainers: []v1.Container{
@@ -356,10 +388,6 @@ func testPodSubpath(f *framework.Framework, subpath, volumeType string, source *
 						{
 							Name:      volumeName,
 							MountPath: volumePath,
-						},
-						{
-							Name:      probeVolumeName,
-							MountPath: probeVolumePath,
 						},
 					},
 					SecurityContext: &v1.SecurityContext{
@@ -377,10 +405,6 @@ func testPodSubpath(f *framework.Framework, subpath, volumeType string, source *
 							MountPath: volumePath,
 							SubPath:   subpath,
 						},
-						{
-							Name:      probeVolumeName,
-							MountPath: probeVolumePath,
-						},
 					},
 					SecurityContext: &v1.SecurityContext{
 						Privileged: &privileged,
@@ -394,10 +418,6 @@ func testPodSubpath(f *framework.Framework, subpath, volumeType string, source *
 							Name:      volumeName,
 							MountPath: volumePath,
 						},
-						{
-							Name:      probeVolumeName,
-							MountPath: probeVolumePath,
-						},
 					},
 					SecurityContext: &v1.SecurityContext{
 						Privileged: &privileged,
@@ -410,12 +430,6 @@ func testPodSubpath(f *framework.Framework, subpath, volumeType string, source *
 				{
 					Name:         volumeName,
 					VolumeSource: *source,
-				},
-				{
-					Name: probeVolumeName,
-					VolumeSource: v1.VolumeSource{
-						EmptyDir: &v1.EmptyDirVolumeSource{},
-					},
 				},
 			},
 		},
@@ -473,21 +487,17 @@ func testReadFile(f *framework.Framework, file string, pod *v1.Pod, containerInd
 	f.TestContainerOutput("subpath", pod, containerIndex, []string{
 		"content of file \"" + file + "\": mount-tester new file",
 	})
-
-	By(fmt.Sprintf("Deleting pod %s", pod.Name))
-	err := framework.DeletePodWithWait(f, f.ClientSet, pod)
-	Expect(err).NotTo(HaveOccurred(), "while deleting pod")
 }
 
 func testPodFailSupath(f *framework.Framework, pod *v1.Pod) {
 	By(fmt.Sprintf("Creating pod %s", pod.Name))
 	pod, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).Create(pod)
-	Expect(err).ToNot(HaveOccurred(), "while creating pod")
+	Expect(err).ToNot(HaveOccurred())
 	defer func() {
 		framework.DeletePodWithWait(f, f.ClientSet, pod)
 	}()
 	err = framework.WaitTimeoutForPodRunningInNamespace(f.ClientSet, pod.Name, pod.Namespace, time.Minute)
-	Expect(err).To(HaveOccurred(), "while waiting for pod to be running")
+	Expect(err).To(HaveOccurred())
 
 	By("Checking for subpath error event")
 	selector := fields.Set{
@@ -498,44 +508,45 @@ func testPodFailSupath(f *framework.Framework, pod *v1.Pod) {
 	}.AsSelector().String()
 	options := metav1.ListOptions{FieldSelector: selector}
 	events, err := f.ClientSet.CoreV1().Events(f.Namespace.Name).List(options)
-	Expect(err).NotTo(HaveOccurred(), "while getting pod events")
-	Expect(len(events.Items)).NotTo(Equal(0), "no events found")
-	Expect(events.Items[0].Message).To(ContainSubstring("subPath"), "subpath error not found")
+	Expect(err).NotTo(HaveOccurred())
+	Expect(len(events.Items)).NotTo(Equal(0))
+	Expect(events.Items[0].Message).To(ContainSubstring("subPath"))
 }
 
-// Tests that the existing subpath mount is detected when a container restarts
-func testPodContainerRestart(f *framework.Framework, pod *v1.Pod) {
+func testPodContainerRestart(f *framework.Framework, pod *v1.Pod, fileInVolume, fileInSubpath string) {
 	pod.Spec.RestartPolicy = v1.RestartPolicyOnFailure
 
+	// Add liveness probe to subpath container
 	pod.Spec.Containers[0].Image = "busybox"
 	pod.Spec.Containers[0].Command = []string{"/bin/sh", "-ec", "sleep 100000"}
-	pod.Spec.Containers[1].Image = "busybox"
-	pod.Spec.Containers[1].Command = []string{"/bin/sh", "-ec", "sleep 100000"}
-
-	// Add liveness probe to subpath container
 	pod.Spec.Containers[0].LivenessProbe = &v1.Probe{
 		Handler: v1.Handler{
 			Exec: &v1.ExecAction{
-				Command: []string{"cat", probeFilePath},
+				Command: []string{"cat", fileInSubpath},
 			},
 		},
-		InitialDelaySeconds: 1,
+		InitialDelaySeconds: 15,
 		FailureThreshold:    1,
 		PeriodSeconds:       2,
 	}
 
+	// Set volume container to write file
+	writeCmd := fmt.Sprintf("echo test > %v", fileInVolume)
+	pod.Spec.Containers[1].Image = "busybox"
+	pod.Spec.Containers[1].Command = []string{"/bin/sh", "-ec", fmt.Sprintf("%v; sleep 100000", writeCmd)}
+
 	// Start pod
 	By(fmt.Sprintf("Creating pod %s", pod.Name))
 	pod, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).Create(pod)
-	Expect(err).ToNot(HaveOccurred(), "while creating pod")
+	Expect(err).ToNot(HaveOccurred())
 
 	err = framework.WaitTimeoutForPodRunningInNamespace(f.ClientSet, pod.Name, pod.Namespace, time.Minute)
-	Expect(err).ToNot(HaveOccurred(), "while waiting for pod to be running")
+	Expect(err).ToNot(HaveOccurred())
 
 	By("Failing liveness probe")
-	out, err := podContainerExec(pod, 1, fmt.Sprintf("rm %v", probeFilePath))
+	out, err := podContainerExec(pod, 1, fmt.Sprintf("rm %v", fileInVolume))
 	framework.Logf("Pod exec output: %v", out)
-	Expect(err).ToNot(HaveOccurred(), "while failing liveness probe")
+	Expect(err).ToNot(HaveOccurred())
 
 	// Check that container has restarted
 	By("Waiting for container to restart")
@@ -557,14 +568,14 @@ func testPodContainerRestart(f *framework.Framework, pod *v1.Pod) {
 		}
 		return false, nil
 	})
-	Expect(err).ToNot(HaveOccurred(), "while waiting for container to restart")
+	Expect(err).ToNot(HaveOccurred())
 
 	// Fix liveness probe
 	By("Rewriting the file")
-	writeCmd := fmt.Sprintf("echo test-after > %v", probeFilePath)
+	writeCmd = fmt.Sprintf("echo test-after > %v", fileInVolume)
 	out, err = podContainerExec(pod, 1, writeCmd)
 	framework.Logf("Pod exec output: %v", out)
-	Expect(err).ToNot(HaveOccurred(), "while rewriting the probe file")
+	Expect(err).ToNot(HaveOccurred())
 
 	// Wait for container restarts to stabilize
 	By("Waiting for container to stop restarting")
@@ -593,7 +604,13 @@ func testPodContainerRestart(f *framework.Framework, pod *v1.Pod) {
 		}
 		return false, nil
 	})
-	Expect(err).ToNot(HaveOccurred(), "while waiting for container to stabilize")
+	Expect(err).ToNot(HaveOccurred())
+
+	// Verify content of file in subpath
+	out, err = podContainerExec(pod, 0, fmt.Sprintf("cat %v", fileInSubpath))
+	framework.Logf("Pod exec output: %v", out)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(strings.TrimSpace(out)).To(BeEquivalentTo("test-after"))
 }
 
 func testSubpathReconstruction(f *framework.Framework, pod *v1.Pod, forceDelete bool) {
@@ -607,16 +624,16 @@ func testSubpathReconstruction(f *framework.Framework, pod *v1.Pod, forceDelete 
 
 	By(fmt.Sprintf("Creating pod %s", pod.Name))
 	pod, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).Create(pod)
-	Expect(err).ToNot(HaveOccurred(), "while creating pod")
+	Expect(err).ToNot(HaveOccurred())
 
 	err = framework.WaitTimeoutForPodRunningInNamespace(f.ClientSet, pod.Name, pod.Namespace, time.Minute)
-	Expect(err).ToNot(HaveOccurred(), "while waiting for pod to be running")
+	Expect(err).ToNot(HaveOccurred())
 
 	pod, err = f.ClientSet.CoreV1().Pods(f.Namespace.Name).Get(pod.Name, metav1.GetOptions{})
-	Expect(err).ToNot(HaveOccurred(), "while getting pod")
+	Expect(err).ToNot(HaveOccurred())
 
 	nodeIP, err := framework.GetHostExternalAddress(f.ClientSet, pod)
-	Expect(err).NotTo(HaveOccurred(), "while getting node IP")
+	Expect(err).NotTo(HaveOccurred())
 	nodeIP = nodeIP + ":22"
 
 	By("Expecting the volume mount to be found.")
@@ -774,13 +791,13 @@ func (s *hostpathSymlinkSource) createVolume(f *framework.Framework) volInfo {
 		},
 	}
 	pod, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).Create(pod)
-	Expect(err).ToNot(HaveOccurred(), "while creating hostpath init pod")
+	Expect(err).ToNot(HaveOccurred())
 
 	err = framework.WaitForPodSuccessInNamespace(f.ClientSet, pod.Name, pod.Namespace)
-	Expect(err).ToNot(HaveOccurred(), "while waiting for hostpath init pod to succeed")
+	Expect(err).ToNot(HaveOccurred())
 
 	err = framework.DeletePodWithWait(f, f.ClientSet, pod)
-	Expect(err).ToNot(HaveOccurred(), "while deleting hostpath init pod")
+	Expect(err).ToNot(HaveOccurred())
 
 	return volInfo{
 		source: &v1.VolumeSource{
