@@ -217,7 +217,7 @@ func lockAndCheckSubPathWithoutSymlink(volumePath, subPath string) ([]uintptr, e
 	if err != nil {
 		return []uintptr{}, fmt.Errorf("Rel(%s, %s) error: %v", volumePath, subPath, err)
 	}
-	if startsWithBackstep(relSubPath) {
+	if strings.HasPrefix(relSubPath, "..") {
 		return []uintptr{}, fmt.Errorf("SubPath %q not within volume path %q", subPath, volumePath)
 	}
 
@@ -478,7 +478,7 @@ func findExistingPrefix(base, pathname string) (string, []string, error) {
 		return base, nil, err
 	}
 
-	if startsWithBackstep(rel) {
+	if strings.HasPrefix(rel, "..") {
 		return base, nil, fmt.Errorf("pathname(%s) is not within base(%s)", pathname, base)
 	}
 
