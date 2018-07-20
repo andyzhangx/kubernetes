@@ -68,6 +68,56 @@ type acrProvider struct {
 	servicePrincipalToken *adal.ServicePrincipalToken
 }
 
+// lazyAcrProvider is a DockerConfigProvider that creates on demand an acrProvider
+type lazyAcrProvider struct {
+	actualProvider *credentialprovider.CachingDockerConfigProvider
+}
+
+var _ credentialprovider.DockerConfigProvider = &lazyAcrProvider{}
+
+// Enabled implements DockerConfigProvider.Enabled for the lazy provider.
+// Since we perform no checks/work of our own and actualProvider is only created
+// later at image pulling time (if ever), always return true.
+func (p *lazyAcrProvider) Enabled() bool {
+	return true
+}
+
+// LazyProvide implements DockerConfigProvider.LazyProvide. It will be called
+// by the client when attempting to pull an image and it will create the actual
+// provider only when we actually need it the first time.
+func (p *lazyAcrProvider) LazyProvide() *credentialprovider.DockerConfigEntry {
+	glog.V(2).Infof("Entering LazyProvide...")
+	if p.actualProvider == nil {
+		glog.V(2).Infof("Creating acrProvider")
+		p.actualProvider = &credentialprovider.CachingDockerConfigProvider{
+			Provider: &acrProvider{},
+			// Refresh credentials a little earlier than expiration time
+			Lifetime: 11*time.Hour + 55*time.Minute,
+		}
+		if !p.actualProvider.Enabled() {
+			return nil
+		}
+	}
+	config := p.actualProvider.Provide()
+	for _, value := range config {
+		return &value
+	}
+	glog.Warningf("lazyAcrProvider does not contain any credential")
+	return nil
+}
+
+// Provide implements DockerConfigProvider.Provide, creating dummy credentials.
+// Client code will call Provider.LazyProvide() at image pulling time.
+func (p *lazyAcrProvider) Provide() credentialprovider.DockerConfig {
+	glog.V(2).Infof("Entering Provide...")
+	entry := credentialprovider.DockerConfigEntry{
+		Provider: p,
+	}
+	cfg := credentialprovider.DockerConfig{}
+	cfg[""] = entry
+	return cfg
+}
+
 // ParseConfig returns a parsed configuration for an Azure cloudprovider config file
 func parseConfig(configReader io.Reader) (*auth.AzureAuthConfig, error) {
 	var config auth.AzureAuthConfig
@@ -122,22 +172,23 @@ func (a *acrProvider) Enabled() bool {
 		return false
 	}
 
+	return true
+}
+
+func (a *acrProvider) Provide() credentialprovider.DockerConfig {
+	cfg := credentialprovider.DockerConfig{}
+
+	var err error
 	a.servicePrincipalToken, err = auth.GetServicePrincipalToken(a.config, a.environment)
 	if err != nil {
 		glog.Errorf("Failed to create service principal token: %v", err)
-		return false
+		return cfg
 	}
 
 	registryClient := containerregistry.NewRegistriesClient(a.config.SubscriptionID)
 	registryClient.BaseURI = a.environment.ResourceManagerEndpoint
 	registryClient.Authorizer = autorest.NewBearerAuthorizer(a.servicePrincipalToken)
 	a.registryClient = registryClient
-
-	return true
-}
-
-func (a *acrProvider) Provide() credentialprovider.DockerConfig {
-	cfg := credentialprovider.DockerConfig{}
 
 	glog.V(4).Infof("listing registries")
 	res, err := a.registryClient.List()
@@ -146,8 +197,13 @@ func (a *acrProvider) Provide() credentialprovider.DockerConfig {
 		return cfg
 	}
 
-	for ix := range *res.Value {
-		loginServer := getLoginServer((*res.Value)[ix])
+	if len(*res.Value) == 0 {
+		glog.V(4).Infof("listing registries: empty registry list...")
+	}
+
+	for _, registry := range *res.Value {
+		loginServer := getLoginServer(registry)
+		glog.V(2).Infof("loginServer:%s", loginServer)
 		var cred *credentialprovider.DockerConfigEntry
 
 		if a.config.UseManagedIdentityExtension {
@@ -161,6 +217,7 @@ func (a *acrProvider) Provide() credentialprovider.DockerConfig {
 				Password: a.config.AADClientSecret,
 				Email:    dummyRegistryEmail,
 			}
+			glog.V(2).Infof("Username:%s", a.config.AADClientID)
 		}
 
 		cfg[loginServer] = *cred

@@ -36,6 +36,7 @@ func (m *kubeGenericRuntimeManager) PullImage(image kubecontainer.ImageSpec, pul
 		return "", err
 	}
 
+	glog.V(2).Infof("Pulling image(%s)...", repoToPull)
 	keyring, err := credentialprovidersecrets.MakeDockerKeyring(pullSecrets, m.keyring)
 	if err != nil {
 		return "", err
@@ -67,6 +68,7 @@ func (m *kubeGenericRuntimeManager) PullImage(image kubecontainer.ImageSpec, pul
 			RegistryToken: authConfig.RegistryToken,
 		}
 
+		glog.V(2).Infof("Pulling image(%s) in lazyprovide, username=%s...", repoToPull, authConfig.Username)
 		imageRef, err := m.imageService.PullImage(imgSpec, auth)
 		// If there was no error, return success
 		if err == nil {

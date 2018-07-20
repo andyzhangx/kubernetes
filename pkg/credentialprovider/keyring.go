@@ -235,9 +235,11 @@ func urlsMatch(globUrl *url.URL, targetUrl *url.URL) (bool, error) {
 // Multiple credentials may be returned if there are multiple potentially valid credentials
 // available.  This allows for rotation.
 func (dk *BasicDockerKeyring) Lookup(image string) ([]LazyAuthConfiguration, bool) {
+	glog.V(2).Infof("BasicDockerKeyring::Lookup image(%s)", image)
 	// range over the index as iterating over a map does not provide a predictable ordering
 	ret := []LazyAuthConfiguration{}
 	for _, k := range dk.index {
+		glog.V(2).Infof("BasicDockerKeyring::Lookup image(%s) k=%s", image, k)
 		// both k and image are schemeless URLs because even though schemes are allowed
 		// in the credential configurations, we remove them in Add.
 		if matched, _ := urlsMatchStr(k, image); !matched {
@@ -264,6 +266,7 @@ func (dk *BasicDockerKeyring) Lookup(image string) ([]LazyAuthConfiguration, boo
 // Lookup implements the DockerKeyring method for fetching credentials
 // based on image name.
 func (dk *lazyDockerKeyring) Lookup(image string) ([]LazyAuthConfiguration, bool) {
+	glog.V(2).Infof("lazyDockerKeyring::Lookup image(%s)", image)
 	keyring := &BasicDockerKeyring{}
 
 	for _, p := range dk.Providers {
@@ -286,6 +289,7 @@ func (f *FakeKeyring) Lookup(image string) ([]LazyAuthConfiguration, bool) {
 type UnionDockerKeyring []DockerKeyring
 
 func (k UnionDockerKeyring) Lookup(image string) ([]LazyAuthConfiguration, bool) {
+	glog.V(2).Infof("UnionDockerKeyring::Lookup image(%s)", image)
 	authConfigs := []LazyAuthConfiguration{}
 	for _, subKeyring := range k {
 		if subKeyring == nil {
