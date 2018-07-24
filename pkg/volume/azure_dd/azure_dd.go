@@ -17,7 +17,9 @@ limitations under the License.
 package azure_dd
 
 import (
+	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-04-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/storage/mgmt/2017-10-01/storage"
@@ -144,6 +146,25 @@ func (plugin *azureDataDiskPlugin) GetVolumeLimits() (map[string]int64, error) {
 
 	if cloud.ProviderName() != azure.CloudProviderName {
 		return nil, fmt.Errorf("Expected Azure cloudprovider, got %s", cloud.ProviderName())
+	}
+
+	instances, ok := cloud.Instances()
+	if !ok {
+		glog.Warningf("Failed to get instances from cloud provider")
+		return volumeLimits, nil
+	}
+
+	instanceType, err := instances.InstanceType(context.TODO(), plugin.host.GetNodeName())
+	if err != nil {
+		glog.Errorf("Failed to get instance type from Azure cloud provider")
+		return volumeLimits, nil
+	}
+
+	volumeLimit, ok := azureVolumeLimits[strings.ToUpper(instanceType)]
+	if ok {
+		volumeLimits = map[string]int64{
+			util.AzureVolumeLimitKey: volumeLimit,
+		}
 	}
 
 	return volumeLimits, nil
@@ -287,4 +308,155 @@ func (plugin *azureDataDiskPlugin) NewDeviceMounter() (volume.DeviceMounter, err
 
 func (plugin *azureDataDiskPlugin) NewDeviceUnmounter() (volume.DeviceUnmounter, error) {
 	return plugin.NewDetacher()
+}
+
+// azure volume limits map according to https://azure.microsoft.com/en-us/documentation/articles/virtual-machines-linux-sizes/
+var azureVolumeLimits = map[string]int64{
+	// A-series
+	"STANDARD_A0":  1,
+	"STANDARD_A1":  2,
+	"STANDARD_A2":  4,
+	"STANDARD_A3":  8,
+	"STANDARD_A4":  16,
+	"STANDARD_A5":  4,
+	"STANDARD_A6":  8,
+	"STANDARD_A7":  16,
+	"STANDARD_A8":  16,
+	"STANDARD_A9":  16,
+	"STANDARD_A10": 16,
+	"STANDARD_A11": 16,
+
+	// Av2-series
+	"STANDARD_A1_V2":  2,
+	"STANDARD_A2_V2":  4,
+	"STANDARD_A4_V2":  8,
+	"STANDARD_A8_V2":  16,
+	"STANDARD_A2M_V2": 4,
+	"STANDARD_A4M_V2": 8,
+	"STANDARD_A8M_V2": 16,
+
+	// B-series
+	"STANDARD_B1S":  2,
+	"STANDARD_B1MS": 2,
+	"STANDARD_B2S":  4,
+	"STANDARD_B2MS": 4,
+	"STANDARD_B4MS": 8,
+	"STANDARD_B8MS": 16,
+
+	// D-series
+	"STANDARD_D1":  2,
+	"STANDARD_D2":  4,
+	"STANDARD_D3":  8,
+	"STANDARD_D4":  16,
+	"STANDARD_D11": 4,
+	"STANDARD_D12": 8,
+	"STANDARD_D13": 16,
+	"STANDARD_D14": 32,
+
+	// Dv2-series
+	"STANDARD_D1_V2":  4,
+	"STANDARD_D2_V2":  8,
+	"STANDARD_D3_V2":  16,
+	"STANDARD_D4_V2":  32,
+	"STANDARD_D5_V2":  64,
+	"STANDARD_D11_V2": 4,
+	"STANDARD_D12_V2": 8,
+	"STANDARD_D13_V2": 16,
+	"STANDARD_D14_V2": 32,
+	"STANDARD_D15_V2": 40,
+
+	// Dv3-series
+	"STANDARD_D2_V3":  4,
+	"STANDARD_D4_V3":  8,
+	"STANDARD_D8_V3":  16,
+	"STANDARD_D16_V3": 32,
+	"STANDARD_D32_V3": 32,
+	"STANDARD_D64_V3": 32,
+
+	// DS-series
+	"STANDARD_DS1":  2,
+	"STANDARD_DS2":  4,
+	"STANDARD_DS3":  8,
+	"STANDARD_DS4":  16,
+	"STANDARD_DS11": 4,
+	"STANDARD_DS12": 8,
+	"STANDARD_DS13": 16,
+	"STANDARD_DS14": 32,
+
+	// DSv2-series
+	"STANDARD_DS1_V2":  4,
+	"STANDARD_DS2_V2":  8,
+	"STANDARD_DS3_V2":  16,
+	"STANDARD_DS4_V2":  32,
+	"STANDARD_DS5_V2":  64,
+	"STANDARD_DS11_V2": 4,
+	"STANDARD_DS12_V2": 8,
+	"STANDARD_DS13_V2": 16,
+	"STANDARD_DS14_V2": 32,
+	"STANDARD_DS15_V2": 40,
+
+	// DSv3-series
+	"STANDARD_D2S_V3":  4,
+	"STANDARD_D4S_V3":  8,
+	"STANDARD_D8S_V3":  16,
+	"STANDARD_D16S_V3": 32,
+	"STANDARD_D32S_V3": 32,
+	"STANDARD_D64S_V3": 32,
+
+	// F-series
+	"STANDARD_F1":  2,
+	"STANDARD_F2":  4,
+	"STANDARD_F4":  16,
+	"STANDARD_F8":  16,
+	"STANDARD_F16": 32,
+
+	// FS-series
+	"STANDARD_F1S":  2,
+	"STANDARD_F2S":  4,
+	"STANDARD_F4S":  16,
+	"STANDARD_F8S":  16,
+	"STANDARD_F16S": 32,
+
+	// G-series
+	"STANDARD_G1": 4,
+	"STANDARD_G2": 8,
+	"STANDARD_G3": 16,
+	"STANDARD_G4": 32,
+	"STANDARD_G5": 64,
+
+	// GS-series
+	"STANDARD_GS1": 4,
+	"STANDARD_GS2": 8,
+	"STANDARD_GS3": 16,
+	"STANDARD_GS4": 32,
+	"STANDARD_GS5": 64,
+
+	// LS-series
+	"STANDARD_L4S":  8,
+	"STANDARD_L8S":  16,
+	"STANDARD_L16S": 32,
+	"STANDARD_L32S": 64,
+
+	// M-series
+	"STANDARD_M64MS": 64,
+	"STANDARD_M128S": 64,
+
+	// NV-series
+	"STANDARD_NV6":  24,
+	"STANDARD_NV12": 48,
+	"STANDARD_NV24": 64,
+
+	// NC-series
+	"STANDARD_NC6":   24,
+	"STANDARD_NC12":  48,
+	"STANDARD_NC24":  64,
+	"STANDARD_NC24R": 64,
+
+	// H-series
+	"STANDARD_H8":    32,
+	"STANDARD_H16":   64,
+	"STANDARD_H8M":   32,
+	"STANDARD_H16M":  64,
+	"STANDARD_H16R":  64,
+	"STANDARD_H16MR": 64,
 }
