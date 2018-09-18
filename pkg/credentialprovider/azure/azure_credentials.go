@@ -46,9 +46,8 @@ var containerRegistryUrls = []string{"*.azurecr.io", "*.azurecr.cn", "*.azurecr.
 // be resolved on Azure.
 func init() {
 	credentialprovider.RegisterCredentialProvider("azure",
-		&credentialprovider.CachingDockerConfigProvider{
-			Provider: NewACRProvider(flagConfigFile),
-			Lifetime: 1 * time.Minute,
+		&lazyAcrProvider{
+			configFile: flagConfigFile,
 		})
 }
 
@@ -111,6 +110,7 @@ type acrProvider struct {
 
 // lazyAcrProvider is a DockerConfigProvider that creates on demand an acrProvider
 type lazyAcrProvider struct {
+	configFile     *string
 	actualProvider *credentialprovider.CachingDockerConfigProvider
 }
 
@@ -130,7 +130,7 @@ func (p *lazyAcrProvider) LazyProvide() *credentialprovider.DockerConfigEntry {
 	if p.actualProvider == nil {
 		glog.V(2).Infof("Creating acrProvider")
 		p.actualProvider = &credentialprovider.CachingDockerConfigProvider{
-			Provider: &acrProvider{},
+			Provider: &acrProvider{file: p.configFile},
 			// Refresh credentials a little earlier than expiration time
 			Lifetime: 11*time.Hour + 55*time.Minute,
 		}
