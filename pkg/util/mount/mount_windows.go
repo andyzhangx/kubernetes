@@ -97,7 +97,12 @@ func (mounter *Mounter) Mount(source string, target string, fstype string, optio
 			fmt.Sprintf("smbpassword=%s", options[1]),
 			fmt.Sprintf("smbremotepath=%s", source))
 		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("azureMount: SmbGlobalMapping failed: %v, only SMB mount is supported now, output: %q", err, string(output))
+			outputStr := string(output)
+			if strings.Contains(outputStr, "Generic failure") {
+				klog.Warningf("azureMount: SmbGlobalMapping source(%q) should already be mounted, target(%q) output: %q", bindSource, target, outputStr)
+			} else {
+				return fmt.Errorf("azureMount: SmbGlobalMapping failed: %v, only SMB mount is supported now, output: %q", err, string(output))
+			}
 		}
 	}
 
