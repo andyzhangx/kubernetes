@@ -57,7 +57,7 @@ func (az *Cloud) GetVirtualMachineWithRetry(name types.NodeName) (compute.Virtua
 	var machine compute.VirtualMachine
 	var retryErr error
 	err := wait.ExponentialBackoff(az.requestBackoff(), func() (bool, error) {
-		machine, retryErr = az.getVirtualMachine(name)
+		machine, retryErr = az.getVirtualMachine(name, false)
 		if retryErr == cloudprovider.InstanceNotFound {
 			return true, cloudprovider.InstanceNotFound
 		}

@@ -29,7 +29,7 @@ import (
 // AttachDisk attaches a vhd to vm
 // the vhd must exist, can be identified by diskName, diskURI, and lun.
 func (as *availabilitySet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nodeName types.NodeName, lun int32, cachingMode compute.CachingTypes) error {
-	vm, err := as.getVirtualMachine(nodeName)
+	vm, err := as.getVirtualMachine(nodeName, true)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (as *availabilitySet) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 // DetachDiskByName detaches a vhd from host
 // the vhd can be identified by diskName or diskURI
 func (as *availabilitySet) DetachDiskByName(diskName, diskURI string, nodeName types.NodeName) error {
-	vm, err := as.getVirtualMachine(nodeName)
+	vm, err := as.getVirtualMachine(nodeName, true)
 	if err != nil {
 		// if host doesn't exist, no need to detach
 		klog.Warningf("azureDisk - cannot find node %s, skip detaching disk %s", nodeName, diskName)
@@ -157,7 +157,7 @@ func (as *availabilitySet) DetachDiskByName(diskName, diskURI string, nodeName t
 
 // GetDataDisks gets a list of data disks attached to the node.
 func (as *availabilitySet) GetDataDisks(nodeName types.NodeName) ([]compute.DataDisk, error) {
-	vm, err := as.getVirtualMachine(nodeName)
+	vm, err := as.getVirtualMachine(nodeName, true)
 	if err != nil {
 		return nil, err
 	}

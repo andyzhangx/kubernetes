@@ -71,10 +71,14 @@ func ignoreStatusNotFoundFromError(err error) error {
 }
 
 /// getVirtualMachine calls 'VirtualMachinesClient.Get' with a timed cache
+/// refresh determines whether delete current cache
 /// The service side has throttling control that delays responses if there're multiple requests onto certain vm
 /// resource request in short period.
-func (az *Cloud) getVirtualMachine(nodeName types.NodeName) (vm compute.VirtualMachine, err error) {
+func (az *Cloud) getVirtualMachine(nodeName types.NodeName, refresh bool) (vm compute.VirtualMachine, err error) {
 	vmName := string(nodeName)
+	if refresh {
+		az.vmCache.Delete(vmName)
+	}
 	cachedVM, err := az.vmCache.Get(vmName)
 	if err != nil {
 		return vm, err
