@@ -92,8 +92,9 @@ func newScaleSet(az *Cloud) (VMSet, error) {
 }
 
 // getVmssVM gets virtualMachineScaleSetVM by nodeName from cache.
+// refresh determines whether delete current cache and fetch the latest state
 // It returns cloudprovider.InstanceNotFound if node does not belong to any scale sets.
-func (ss *scaleSet) getVmssVM(nodeName string) (ssName, instanceID string, vm compute.VirtualMachineScaleSetVM, err error) {
+func (ss *scaleSet) getVmssVM(nodeName string, refresh bool) (ssName, instanceID string, vm compute.VirtualMachineScaleSetVM, err error) {
 	instanceID, err = getScaleSetVMInstanceID(nodeName)
 	if err != nil {
 		return ssName, instanceID, vm, err
@@ -115,6 +116,9 @@ func (ss *scaleSet) getVmssVM(nodeName string) (ssName, instanceID string, vm co
 
 	glog.V(4).Infof("getVmssVM gets scaleSetName (%q) and instanceID (%q) for node %q", ssName, instanceID, nodeName)
 	key := buildVmssCacheKey(resourceGroup, ss.makeVmssVMName(ssName, instanceID))
+	if refresh {
+		ss.vmssVMCache.Delete(key)
+	}
 	cachedVM, err := ss.vmssVMCache.Get(key)
 	if err != nil {
 		return ssName, instanceID, vm, err
@@ -130,7 +134,7 @@ func (ss *scaleSet) getVmssVM(nodeName string) (ssName, instanceID string, vm co
 
 // GetPowerStatusByNodeName returns the power state of the specified node.
 func (ss *scaleSet) GetPowerStatusByNodeName(name string) (powerState string, err error) {
-	_, _, vm, err := ss.getVmssVM(name)
+	_, _, vm, err := ss.getVmssVM(name, false)
 	if err != nil {
 		return powerState, err
 	}
@@ -180,7 +184,7 @@ func (ss *scaleSet) GetInstanceIDByNodeName(name string) (string, error) {
 		return ss.availabilitySet.GetInstanceIDByNodeName(name)
 	}
 
-	_, _, vm, err := ss.getVmssVM(name)
+	_, _, vm, err := ss.getVmssVM(name, false)
 	if err != nil {
 		return "", err
 	}
@@ -233,7 +237,7 @@ func (ss *scaleSet) GetInstanceTypeByNodeName(name string) (string, error) {
 		return ss.availabilitySet.GetInstanceTypeByNodeName(name)
 	}
 
-	_, _, vm, err := ss.getVmssVM(name)
+	_, _, vm, err := ss.getVmssVM(name, false)
 	if err != nil {
 		return "", err
 	}
@@ -258,7 +262,7 @@ func (ss *scaleSet) GetZoneByNodeName(name string) (cloudprovider.Zone, error) {
 		return ss.availabilitySet.GetZoneByNodeName(name)
 	}
 
-	_, _, vm, err := ss.getVmssVM(name)
+	_, _, vm, err := ss.getVmssVM(name, false)
 	if err != nil {
 		return cloudprovider.Zone{}, err
 	}
@@ -519,7 +523,7 @@ func (ss *scaleSet) GetPrimaryInterface(nodeName string) (network.Interface, err
 		return ss.availabilitySet.GetPrimaryInterface(nodeName)
 	}
 
-	ssName, instanceID, vm, err := ss.getVmssVM(nodeName)
+	ssName, instanceID, vm, err := ss.getVmssVM(nodeName, false)
 	if err != nil {
 		// VM is availability set, but not cached yet in availabilitySetNodesCache.
 		if err == ErrorNotVmssInstance {

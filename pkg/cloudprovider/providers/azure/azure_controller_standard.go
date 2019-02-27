@@ -146,12 +146,21 @@ func (as *availabilitySet) DetachDiskByName(diskName, diskURI string, nodeName t
 	// Invalidate the cache right after updating
 	defer as.cloud.vmCache.Delete(vmName)
 
-	_, err = as.VirtualMachinesClient.CreateOrUpdate(ctx, nodeResourceGroup, vmName, newVM)
-	if err != nil {
-		glog.Errorf("azureDisk - detach disk(%s) failed, err: %v", diskName, err)
-	} else {
-		glog.V(2).Infof("azureDisk - detach disk(%s) succeeded", diskName)
+	resp, err := as.VirtualMachinesClient.CreateOrUpdate(ctx, nodeResourceGroup, vmName, newVM)
+	if as.CloudProviderBackoff && shouldRetryHTTPRequest(resp, err) {
+		glog.V(2).Infof("azureDisk - update(%s) backing off: vm(%s) detach disk(%s, %s), err: %v, disks: %v", nodeResourceGroup, vmName, diskName, diskURI, err, disks)
+		retryErr := as.CreateOrUpdateVMWithRetry(nodeResourceGroup, vmName, newVM)
+		if retryErr != nil {
+			err = retryErr
+			glog.V(2).Infof("azureDisk - update(%s) abort backoff: vm(%s) detach disk(%s, %s), err: %v, disks: %v", nodeResourceGroup, vmName, diskName, diskURI, err, disks)
+		}
 	}
+	if err != nil {
+		glog.Errorf("azureDisk - detach disk(%s, %s)) failed, err: %v", diskName, diskURI, err)
+	} else {
+		glog.V(2).Infof("azureDisk - detach disk(%s, %s) succeeded", diskName, diskURI)
+	}
+
 	return err
 }
 

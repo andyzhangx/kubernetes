@@ -30,7 +30,7 @@ import (
 // the vhd must exist, can be identified by diskName, diskURI, and lun.
 func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nodeName types.NodeName, lun int32, cachingMode compute.CachingTypes) error {
 	vmName := mapNodeNameToVMName(nodeName)
-	ssName, instanceID, vm, err := ss.getVmssVM(vmName)
+	ssName, instanceID, vm, err := ss.getVmssVM(vmName, false)
 	if err != nil {
 		return err
 	}
@@ -42,7 +42,8 @@ func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nod
 
 	disks := []compute.DataDisk{}
 	if vm.StorageProfile != nil && vm.StorageProfile.DataDisks != nil {
-		disks = *vm.StorageProfile.DataDisks
+		disks = make([]compute.DataDisk, len(*vm.StorageProfile.DataDisks))
+		copy(disks, *vm.StorageProfile.DataDisks)
 	}
 	if isManagedDisk {
 		disks = append(disks,
@@ -76,17 +77,17 @@ func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nod
 	key := buildVmssCacheKey(nodeResourceGroup, ss.makeVmssVMName(ssName, instanceID))
 	defer ss.vmssVMCache.Delete(key)
 
-	glog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk(%s)", nodeResourceGroup, nodeName, diskName)
+	glog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk(%s, %s)", nodeResourceGroup, nodeName, diskName, diskURI)
 	_, err = ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, vm)
 	if err != nil {
 		detail := err.Error()
 		if strings.Contains(detail, errLeaseFailed) || strings.Contains(detail, errDiskBlobNotFound) {
 			// if lease cannot be acquired or disk not found, immediately detach the disk and return the original error
-			glog.Infof("azureDisk - err %s, try detach disk(%s)", detail, diskName)
+			glog.Infof("azureDisk - err %s, try detach disk(%s, %s)", detail, diskName, diskURI)
 			ss.DetachDiskByName(diskName, diskURI, nodeName)
 		}
 	} else {
-		glog.V(2).Infof("azureDisk - attach disk(%s) succeeded", diskName)
+		glog.V(2).Infof("azureDisk - attach disk(%s, %s) succeeded", diskName, diskURI)
 	}
 	return err
 }
@@ -95,7 +96,7 @@ func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nod
 // the vhd can be identified by diskName or diskURI
 func (ss *scaleSet) DetachDiskByName(diskName, diskURI string, nodeName types.NodeName) error {
 	vmName := mapNodeNameToVMName(nodeName)
-	ssName, instanceID, vm, err := ss.getVmssVM(vmName)
+	ssName, instanceID, vm, err := ss.getVmssVM(vmName, true)
 	if err != nil {
 		return err
 	}
@@ -107,7 +108,8 @@ func (ss *scaleSet) DetachDiskByName(diskName, diskURI string, nodeName types.No
 
 	disks := []compute.DataDisk{}
 	if vm.StorageProfile != nil && vm.StorageProfile.DataDisks != nil {
-		disks = *vm.StorageProfile.DataDisks
+		disks = make([]compute.DataDisk, len(*vm.StorageProfile.DataDisks))
+		copy(disks, *vm.StorageProfile.DataDisks)
 	}
 	bFoundDisk := false
 	for i, disk := range disks {
@@ -134,12 +136,20 @@ func (ss *scaleSet) DetachDiskByName(diskName, diskURI string, nodeName types.No
 	key := buildVmssCacheKey(nodeResourceGroup, ss.makeVmssVMName(ssName, instanceID))
 	defer ss.vmssVMCache.Delete(key)
 
-	glog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%s)", nodeResourceGroup, nodeName, diskName)
-	_, err = ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, vm)
+	glog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%s, %s), disks: %v", nodeResourceGroup, nodeName, diskName, diskURI, getDiskURIs(disks))
+	resp, err := ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, vm)
+	if ss.CloudProviderBackoff && shouldRetryHTTPRequest(resp, err) {
+		glog.V(2).Infof("azureDisk - update(%s) backing off: vm(%s) detach disk(%s, %s), err: %v, disks: %v", nodeResourceGroup, nodeName, diskName, diskURI, err, getDiskURIs(disks))
+		retryErr := ss.UpdateVmssVMWithRetry(ctx, nodeResourceGroup, ssName, instanceID, vm)
+		if retryErr != nil {
+			err = retryErr
+			glog.V(2).Infof("azureDisk - update(%s) abort backoff: vm(%s) detach disk(%s, %s), err: %v, disks: %v", nodeResourceGroup, nodeName, diskName, diskURI, err, getDiskURIs(disks))
+		}
+	}
 	if err != nil {
-		glog.Errorf("azureDisk - detach disk(%s) from %s failed, err: %v", diskName, nodeName, err)
+		glog.Errorf("azureDisk - detach disk(%s, %s) from %s failed, err: %v", diskName, diskURI, nodeName, err)
 	} else {
-		glog.V(2).Infof("azureDisk - detach disk(%s) succeeded", diskName)
+		glog.V(2).Infof("azureDisk - detach disk(%s, %s) succeeded", diskName, diskURI)
 	}
 
 	return err
@@ -147,7 +157,7 @@ func (ss *scaleSet) DetachDiskByName(diskName, diskURI string, nodeName types.No
 
 // GetDataDisks gets a list of data disks attached to the node.
 func (ss *scaleSet) GetDataDisks(nodeName types.NodeName) ([]compute.DataDisk, error) {
-	_, _, vm, err := ss.getVmssVM(string(nodeName))
+	_, _, vm, err := ss.getVmssVM(string(nodeName), false)
 	if err != nil {
 		return nil, err
 	}
