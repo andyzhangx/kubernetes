@@ -186,3 +186,13 @@ func (c *controllerCommon) DisksAreAttached(diskNames []string, nodeName types.N
 
 	return attached, nil
 }
+
+func getDiskURIs(disks []compute.DataDisk) string {
+	output := ""
+	for _, disk := range disks {
+		if disk.ManagedDisk != nil {
+			output += fmt.Sprintf(" %s(lun: %v)", *disk.ManagedDisk.ID, *disk.Lun)
+		}
+	}
+	return output
+}
