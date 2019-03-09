@@ -95,9 +95,7 @@ func PathExists(path string) (bool, error) {
 		return true, nil
 	} else if os.IsNotExist(err) {
 		return false, nil
-	} else if IsCorruptedMnt(err) {
-		return true, err
 	} else {
-		return false, err
+		return true, err
 	}
 }

@@ -50,7 +50,8 @@ func (f *flexVolumeUnmounter) TearDownAt(dir string) error {
 	}
 
 	if pathErr != nil && !mount.IsCorruptedMnt(pathErr) {
-		return fmt.Errorf("Error checking path: %v", pathErr)
+		// only log warning here since plugins should anyways have to deal with errors
+		klog.Warningf("Error checking path: %v", pathErr)
 	}
 
 	call := f.plugin.NewDriverCall(unmountCmd)
