@@ -151,7 +151,7 @@ func (c *ManagedDiskController) CreateManagedDisk(options *ManagedDiskOptions) (
 	diskID := ""
 
 	err = kwait.ExponentialBackoff(defaultBackOff, func() (bool, error) {
-		provisionState, id, err := c.GetDisk(options.ResourceGroup, options.DiskName)
+		provisionState, id, _, err := c.GetDisk(options.ResourceGroup, options.DiskName)
 		diskID = id
 		// We are waiting for provisioningState==Succeeded
 		// We don't want to hand-off managed disks to k8s while they are
@@ -197,21 +197,33 @@ func (c *ManagedDiskController) DeleteManagedDisk(diskURI string) error {
 	return nil
 }
 
-// GetDisk return: disk provisionState, diskID, error
-func (c *ManagedDiskController) GetDisk(resourceGroup, diskName string) (string, string, error) {
+// GetDisk return: disk provisionState, diskID, ManagedBy, error
+func (c *ManagedDiskController) GetDisk(resourceGroup, diskName string) (string, string, *string, error) {
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
 
 	result, err := c.common.cloud.DisksClient.Get(ctx, resourceGroup, diskName)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
 	if result.DiskProperties != nil && (*result.DiskProperties).ProvisioningState != nil {
-		return *(*result.DiskProperties).ProvisioningState, *result.ID, nil
+		return *(*result.DiskProperties).ProvisioningState, *result.ID, nil, nil
 	}
 
-	return "", "", err
+	return "", "", result.ManagedBy, err
+}
+
+// GetDiskAttachedVM return: disk attached VM URL, error
+func (c *ManagedDiskController) GetDiskAttachedVM(diskURI string) (*string, error) {
+	diskName := path.Base(diskURI)
+	resourceGroup, err := getResourceGroupFromDiskURI(diskURI)
+	if err != nil {
+		return nil, err
+	}
+
+	_, _, managedBy, err := c.GetDisk(resourceGroup, diskName)
+	return managedBy, err
 }
 
 // ResizeDisk Expand the disk to new size

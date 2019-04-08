@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-10-01/compute"
@@ -89,6 +90,17 @@ func (a *azureDiskAttacher) Attach(spec *volume.Spec, nodeName types.NodeName) (
 		// Volume is already attached to node.
 		klog.V(2).Infof("Attach operation is successful. volume %q is already attached to node %q at lun %d.", volumeSource.DiskName, instanceid, lun)
 	} else {
+		// check whether current disk is in "Attached" state(for managed disk only)
+		if strings.Index(volumeSource.DataDiskURI, "/subscriptions/") == 0 {
+			managedBy, err := a.cloud.ManagedDiskController.GetDiskAttachedVM(volumeSource.DataDiskURI)
+			if err != nil {
+				return "", fmt.Errorf("GetDiskAttachedVM(%s) failed with %v", volumeSource.DataDiskURI, err)
+			}
+			if managedBy != nil {
+				return "", fmt.Errorf("disk %s already attached to VM(%s)", volumeSource.DataDiskURI, *managedBy)
+			}
+		}
+
 		klog.V(2).Infof("GetDiskLun returned: %v. Initiating attaching volume %q to node %q.", err, volumeSource.DataDiskURI, nodeName)
 		getLunMutex.LockKey(instanceid)
 		defer getLunMutex.UnlockKey(instanceid)
