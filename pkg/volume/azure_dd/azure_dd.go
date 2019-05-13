@@ -195,8 +195,9 @@ func getMaxDataDiskCount(instanceType string, sizeList *[]compute.VirtualMachine
 		}
 		if strings.ToUpper(*size.Name) == vmsize {
 			klog.V(12).Infof("got a matching size in getMaxDataDiskCount, Name: %s, MaxDataDiskCount: %d", *size.Name, *size.MaxDataDiskCount)
-			return int64(*size.MaxDataDiskCount)
+			//return int64(*size.MaxDataDiskCount)
 		}
+		klog.Warningf("getMaxDataDiskCount:%s:%d", *size.Name, *size.MaxDataDiskCount)
 	}
 	return defaultAzureVolumeLimit
 }
