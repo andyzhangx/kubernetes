@@ -306,6 +306,9 @@ func (c *controllerCommon) DisksAreAttached(diskNames []string, nodeName types.N
 func filterDetachingDisks(unfilteredDisks []compute.DataDisk) []compute.DataDisk {
 	filteredDisks := []compute.DataDisk{}
 	for _, disk := range unfilteredDisks {
+		if disk.ManagedDisk != nil && disk.ManagedDisk.ID != nil {
+			klog.V(2).Infof("azureDisk - filtering disk: %s", *disk.ManagedDisk.ID)
+		}
 		if disk.ToBeDetached != nil && *disk.ToBeDetached {
 			if disk.Name != nil {
 				klog.V(2).Infof("Filtering disk: %s with ToBeDetached flag set.", *disk.Name)
