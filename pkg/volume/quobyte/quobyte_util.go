@@ -18,12 +18,14 @@ package quobyte
 
 import (
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	volumehelpers "k8s.io/cloud-provider/volume/helpers"
+	proxyutil "k8s.io/kubernetes/pkg/proxy/util"
 
 	quobyteapi "github.com/quobyte/api"
 	"k8s.io/klog"
@@ -77,11 +79,13 @@ func (manager *quobyteVolumeManager) deleteVolume(deleter *quobyteVolumeDeleter)
 }
 
 func (manager *quobyteVolumeManager) createQuobyteClient() *quobyteapi.QuobyteClient {
-	return quobyteapi.NewQuobyteClient(
+	qc := quobyteapi.NewQuobyteClient(
 		manager.config.quobyteAPIServer,
 		manager.config.quobyteUser,
 		manager.config.quobytePassword,
 	)
+	qc.SetTransport(&http.Transport{DialContext: proxyutil.NewFilteredDialContext(nil)})
+	return qc
 }
 
 func (mounter *quobyteMounter) pluginDirIsMounted(pluginDir string) (bool, error) {

@@ -14,6 +14,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -21,6 +22,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -51,6 +53,8 @@ type ClientOptions struct {
 	RetryCount   int
 	// control waits between retries
 	RetryMinDelay, RetryMaxDelay int
+	// Dial function used for HTTP/HTTPS connections
+	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
 // Client object
@@ -178,13 +182,13 @@ func (c *Client) doBasic(req *http.Request) (*http.Response, error) {
 		<-c.throttle
 	}()
 
-	httpClient := &http.Client{}
-	if c.tlsClientConfig != nil {
-		httpClient.Transport = &http.Transport{
-			TLSClientConfig: c.tlsClientConfig,
-		}
+	httpClient := &http.Client{
+		CheckRedirect: c.checkRedirect,
+		Transport: &http.Transport{
+			DialContext:     c.opts.DialContext,
+			TLSClientConfig: c.tlsClientConfig, // may be nil
+		},
 	}
-	httpClient.CheckRedirect = c.checkRedirect
 	return httpClient.Do(req)
 }
 

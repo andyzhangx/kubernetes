@@ -44,6 +44,9 @@ var (
 	// ErrProxyNotSupported is returned when a client is unable to set a proxy for http requests.
 	ErrProxyNotSupported = errors.New("client does not support http proxy")
 
+	// ErrDialerNotSupported is returned when a client is unable to set a DialContext for http requests.
+	ErrDialerNotSupported = errors.New("client does not support setting DialContext")
+
 	// DefaultPort is the default API port.
 	DefaultPort = "5705"
 
@@ -106,6 +109,8 @@ func (c *Client) ClientVersion() string {
 type Dialer interface {
 	Dial(network, address string) (net.Conn, error)
 }
+
+type dialContext = func(ctx context.Context, network, address string) (net.Conn, error)
 
 // NewClient returns a Client instance ready for communication with the given
 // server endpoint. It will use the latest remote API version available in the
@@ -201,6 +206,36 @@ func (c *Client) SetTimeout(t time.Duration) {
 	if c.httpClient != nil {
 		c.httpClient.Timeout = t
 	}
+}
+
+// GetDialContext returns the current DialContext function, or nil if there is none.
+func (c *Client) GetDialContext() dialContext {
+	c.configLock.RLock()
+	defer c.configLock.RUnlock()
+
+	if c.httpClient == nil {
+		return nil
+	}
+	transport, supported := c.httpClient.Transport.(*http.Transport)
+	if !supported {
+		return nil
+	}
+	return transport.DialContext
+}
+
+// SetDialContext uses the given dial function to establish TCP connections in the HTTPClient.
+func (c *Client) SetDialContext(dial dialContext) error {
+	c.configLock.Lock()
+	defer c.configLock.Unlock()
+
+	if client := c.httpClient; client != nil {
+		transport, supported := client.Transport.(*http.Transport)
+		if !supported {
+			return ErrDialerNotSupported
+		}
+		transport.DialContext = dial
+	}
+	return nil
 }
 
 func (c *Client) checkAPIVersion() error {
@@ -532,10 +567,10 @@ func (e *Error) Error() string {
 // values to http.DefaultTransport. Do not use this for transient transports as
 // it can leak file descriptors over time. Only use this for transports that
 // will be re-used for the same host(s).
-func defaultPooledTransport(dialer Dialer) *http.Transport {
+func defaultPooledTransport(dial dialContext) *http.Transport {
 	transport := &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
-		Dial:                dialer.Dial,
+		DialContext:         dial,
 		TLSHandshakeTimeout: 5 * time.Second,
 		DisableKeepAlives:   false,
 		MaxIdleConnsPerHost: 1,
@@ -554,6 +589,6 @@ func defaultClient() *http.Client {
 	}
 
 	return &http.Client{
-		Transport: defaultPooledTransport(dialer),
+		Transport: defaultPooledTransport(dialer.DialContext),
 	}
 }

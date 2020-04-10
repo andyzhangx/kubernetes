@@ -47,6 +47,7 @@ require (
 	github.com/d2g/dhcp4client v0.0.0-20170829104524-6e570ed0a266
 	github.com/davecgh/go-spew v1.1.1
 	github.com/daviddengcn/go-colortext v0.0.0-20160507010035-511bcaf42ccd
+        github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/docker/distribution v0.0.0-20170726174610-edc3ab29cdff
 	github.com/docker/docker v0.7.3-0.20190327010347-be7ac8be2ae0
 	github.com/docker/go-connections v0.3.0

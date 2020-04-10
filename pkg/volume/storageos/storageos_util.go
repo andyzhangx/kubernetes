@@ -28,6 +28,7 @@ import (
 	storageosapi "github.com/storageos/go-api"
 	storageostypes "github.com/storageos/go-api/types"
 	"k8s.io/klog"
+	proxyutil "k8s.io/kubernetes/pkg/proxy/util"
 )
 
 const (
@@ -96,6 +97,9 @@ func (u *storageosUtil) NewAPI(apiCfg *storageosAPIConfig) error {
 		return err
 	}
 	api.SetAuth(apiCfg.apiUser, apiCfg.apiPass)
+	if err := api.SetDialContext(proxyutil.NewFilteredDialContext(api.GetDialContext())); err != nil {
+		return fmt.Errorf("failed to set DialContext in storageos client: %v", err)
+	}
 	u.api = api
 	return nil
 }

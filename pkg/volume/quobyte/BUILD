@@ -15,6 +15,7 @@ go_library(
     ],
     importpath = "k8s.io/kubernetes/pkg/volume/quobyte",
     deps = [
+        "//pkg/proxy/util:go_default_library",
         "//pkg/util/mount:go_default_library",
         "//pkg/volume:go_default_library",
         "//pkg/volume/util:go_default_library",

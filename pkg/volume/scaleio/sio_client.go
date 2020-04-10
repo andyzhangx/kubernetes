@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,6 +34,7 @@ import (
 	sio "github.com/codedellemc/goscaleio"
 	siotypes "github.com/codedellemc/goscaleio/types/v1"
 	"k8s.io/klog"
+	proxyutil "k8s.io/kubernetes/pkg/proxy/util"
 )
 
 var (
@@ -118,6 +120,14 @@ func (c *sioClient) init() error {
 		klog.Error(log("failed to create client: %v", err))
 		return err
 	}
+	transport, ok := client.Http.Transport.(*http.Transport)
+	if !ok {
+		return errors.New("could not set http.Transport options for scaleio client")
+	}
+	if transport.DialTLS != nil {
+		return errors.New("DialTLS will be used instead of DialContext")
+	}
+	transport.DialContext = proxyutil.NewFilteredDialContext(nil)
 	c.client = client
 	if _, err = c.client.Authenticate(
 		&sio.ConfigConnect{
