@@ -116,8 +116,8 @@ func (d *CachingDockerConfigProvider) Provide(image string) DockerConfig {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	// If the cache hasn't expired, return our cache
-	if time.Now().Before(d.expiration) {
+	// If the cache hasn't expired, return our cache if cache is not empty
+	if time.Now().Before(d.expiration) && len(d.cacheDockerConfig) > 0 {
 		return d.cacheDockerConfig
 	}
 
