@@ -79,7 +79,7 @@ func Test(t *testing.T) {
 	}
 	provider.loadConfig(bytes.NewBufferString(configStr))
 
-	creds := provider.Provide("")
+	creds := provider.Provide("foo.azurecr.io/nginx:v1")
 
 	if len(creds) != len(result)+1 {
 		t.Errorf("Unexpected list: %v, expected length %d", creds, len(result)+1)
@@ -103,11 +103,13 @@ func Test(t *testing.T) {
 func TestProvide(t *testing.T) {
 	testCases := []struct {
 		desc                string
+		image               string
 		configStr           string
 		expectedCredsLength int
 	}{
 		{
-			desc: "return multiple credentials using Service Principal",
+			desc:  "return multiple credentials using Service Principal",
+			image: "foo.azurecr.io/bar/image:v1",
 			configStr: `
     {
         "aadClientId": "foo",
@@ -116,7 +118,8 @@ func TestProvide(t *testing.T) {
 			expectedCredsLength: 5,
 		},
 		{
-			desc: "retuen 0 credential for non-ACR image using Managed Identity",
+			desc:  "retuen 0 credential for non-ACR image using Managed Identity",
+			image: "busybox",
 			configStr: `
     {
 	"UseManagedIdentityExtension": true
@@ -131,7 +134,7 @@ func TestProvide(t *testing.T) {
 		}
 		provider.loadConfig(bytes.NewBufferString(test.configStr))
 
-		creds := provider.Provide("busybox")
+		creds := provider.Provide(test.image)
 		assert.Equal(t, test.expectedCredsLength, len(creds), "TestCase[%d]: %s", i, test.desc)
 	}
 }

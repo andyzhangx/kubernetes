@@ -26,6 +26,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/services/containerregistry/mgmt/2019-05-01/containerregistry"
@@ -56,12 +57,10 @@ var (
 // init registers the various means by which credentials may
 // be resolved on Azure.
 func init() {
-	credentialprovider.RegisterCredentialProvider("azure",
-		&credentialprovider.CachingDockerConfigProvider{
-			Provider:    NewACRProvider(flagConfigFile),
-			Lifetime:    1 * time.Minute,
-			ShouldCache: func(d credentialprovider.DockerConfig) bool { return len(d) > 0 },
-		})
+	credentialprovider.RegisterCredentialProvider(
+		"azure",
+		NewACRProvider(flagConfigFile, 1*time.Minute),
+	)
 }
 
 // RegistriesClient is a testable interface for the ACR client List operation.
@@ -102,10 +101,11 @@ func (az *azRegistriesClient) List(ctx context.Context) ([]containerregistry.Reg
 	return result, nil
 }
 
-// NewACRProvider parses the specified configFile and returns a DockerConfigProvider
-func NewACRProvider(configFile *string) credentialprovider.DockerConfigProvider {
+// NewACRProvider parses the specified configFile, lifetime and returns a DockerConfigProvider
+func NewACRProvider(configFile *string, lifetime time.Duration) credentialprovider.DockerConfigProvider {
 	return &acrProvider{
-		file: configFile,
+		file:     configFile,
+		lifetime: lifetime,
 	}
 }
 
@@ -115,6 +115,11 @@ type acrProvider struct {
 	environment           *azure.Environment
 	registryClient        RegistriesClient
 	servicePrincipalToken *adal.ServicePrincipalToken
+	// cache fields
+	cacheDockerConfig credentialprovider.DockerConfig
+	lifetime          time.Duration
+	expiration        time.Time
+	mu                sync.Mutex
 }
 
 // ParseConfig returns a parsed configuration for an Azure cloudprovider config file
@@ -186,24 +191,49 @@ func (a *acrProvider) Enabled() bool {
 }
 
 func (a *acrProvider) Provide(image string) credentialprovider.DockerConfig {
-	klog.V(4).Infof("try to provide secret for image %s", image)
-	cfg := credentialprovider.DockerConfig{}
+	loginServer := a.parseACRLoginServerFromImage(image)
+	if loginServer == "" {
+		klog.V(4).Infof("image(%s) is not from ACR, return empty authentication", image)
+		return credentialprovider.DockerConfig{}
+	}
 
+	// add ACR anonymous repo support: use empty username and password for anonymous access
 	defaultConfigEntry := credentialprovider.DockerConfigEntry{
 		Username: "",
 		Password: "",
 		Email:    dummyRegistryEmail,
 	}
+	cfg := credentialprovider.DockerConfig{}
+	cfg["*.azurecr.*"] = defaultConfigEntry
 
-	if a.config.UseManagedIdentityExtension {
-		if loginServer := a.parseACRLoginServerFromImage(image); loginServer == "" {
-			klog.V(4).Infof("image(%s) is not from ACR, skip MSI authentication", image)
-		} else {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// If the cache hasn't expired, return our cache
+	if time.Now().Before(a.expiration) {
+		if a.config != nil && a.config.UseManagedIdentityExtension {
+			// check whether loginServer is in cache
+			for k := range a.cacheDockerConfig {
+				if loginServer == k {
+					cfg[loginServer] = a.cacheDockerConfig[loginServer]
+					return cfg
+				}
+			}
+			// continue with get ARM token next since loginServer not found in cache
 			if cred, err := getACRDockerEntryFromARMToken(a, loginServer); err == nil {
 				cfg[loginServer] = *cred
+				a.cacheDockerConfig[loginServer] = *cred
+				return cfg
 			}
-			// add ACR anonymous repo support: use empty username and password for anonymous access
-			cfg["*.azurecr.*"] = defaultConfigEntry
+		}
+		return a.cacheDockerConfig
+	}
+
+	klog.V(4).Infof("try to provide secret for image %s", image)
+
+	if a.config != nil && a.config.UseManagedIdentityExtension {
+		if cred, err := getACRDockerEntryFromARMToken(a, loginServer); err == nil {
+			cfg[loginServer] = *cred
 		}
 	} else {
 		// Add our entry for each of the supported container registry URLs
@@ -237,10 +267,10 @@ func (a *acrProvider) Provide(image string) credentialprovider.DockerConfig {
 				cfg[customAcrSuffix] = *cred
 			}
 		}
-
-		// add ACR anonymous repo support: use empty username and password for anonymous access
-		cfg["*.azurecr.*"] = defaultConfigEntry
 	}
+
+	a.expiration = time.Now().Add(a.lifetime)
+	a.cacheDockerConfig = cfg
 	return cfg
 }
 
