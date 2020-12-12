@@ -93,6 +93,21 @@ type controllerCommon struct {
 	cloud     *Cloud
 }
 
+// AttachDiskOptions attach disk options
+type AttachDiskOptions struct {
+	lun                     int32
+	isManagedDisk           bool
+	diskName                string
+	cachingMode             compute.CachingTypes
+	diskEncryptionSetID     string
+	writeAcceleratorEnabled bool
+}
+
+// DetachDiskOptions detach disk options
+type DetachDiskOptions struct {
+	diskName string
+}
+
 // getNodeVMSet gets the VMSet interface based on config.VMType and the real virtual machine type.
 func (c *controllerCommon) getNodeVMSet(nodeName types.NodeName, crt azcache.AzureCacheReadType) (VMSet, error) {
 	// 1. vmType is standard, return cloud.VMSet directly.
@@ -196,10 +211,18 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 		return -1, fmt.Errorf("all LUNs are used, cannot attach volume (%s, %s) to instance %q (%v)", diskName, diskURI, instanceid, err)
 	}
 
+	options := AttachDiskOptions{
+		lun:                     lun,
+		isManagedDisk:           isManagedDisk,
+		diskName:                diskName,
+		cachingMode:             cachingMode,
+		diskEncryptionSetID:     diskEncryptionSetID,
+		writeAcceleratorEnabled: writeAcceleratorEnabled,
+	}
 	klog.V(2).Infof("Trying to attach volume %q lun %d to node %q.", diskURI, lun, nodeName)
 	c.diskAttachDetachMap.Store(strings.ToLower(diskURI), "attaching")
 	defer c.diskAttachDetachMap.Delete(strings.ToLower(diskURI))
-	return lun, vmset.AttachDisk(isManagedDisk, diskName, diskURI, nodeName, lun, cachingMode, diskEncryptionSetID, writeAcceleratorEnabled)
+	return lun, vmset.AttachDisk(nodeName, diskURI, &options)
 }
 
 // DetachDisk detaches a disk from host. The vhd can be identified by diskName or diskURI.
@@ -221,12 +244,16 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 		return err
 	}
 
+	options := DetachDiskOptions{
+		diskName: diskName,
+	}
+
 	klog.V(2).Infof("detach %v from node %q", diskURI, nodeName)
 
 	// make the lock here as small as possible
 	c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 	c.diskAttachDetachMap.Store(strings.ToLower(diskURI), "detaching")
-	err = vmset.DetachDisk(diskName, diskURI, nodeName)
+	err = vmset.DetachDisk(nodeName, diskURI, &options)
 	c.diskAttachDetachMap.Delete(strings.ToLower(diskURI))
 	c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
 
@@ -242,7 +269,7 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 			retryErr := kwait.ExponentialBackoff(c.cloud.RequestBackoff(), func() (bool, error) {
 				c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 				c.diskAttachDetachMap.Store(strings.ToLower(diskURI), "detaching")
-				err := vmset.DetachDisk(diskName, diskURI, nodeName)
+				err := vmset.DetachDisk(nodeName, diskURI, &options)
 				c.diskAttachDetachMap.Delete(strings.ToLower(diskURI))
 				c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
 

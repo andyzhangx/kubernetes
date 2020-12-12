@@ -32,7 +32,7 @@ import (
 
 // AttachDisk attaches a vhd to vm
 // the vhd must exist, can be identified by diskName, diskURI, and lun.
-func (as *availabilitySet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nodeName types.NodeName, lun int32, cachingMode compute.CachingTypes, diskEncryptionSetID string, writeAcceleratorEnabled bool) error {
+func (as *availabilitySet) AttachDisk(nodeName types.NodeName, diskURI string, opt *AttachDiskOptions) error {
 	vm, err := as.getVirtualMachine(nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		return err
@@ -47,38 +47,38 @@ func (as *availabilitySet) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 	disks := make([]compute.DataDisk, len(*vm.StorageProfile.DataDisks))
 	copy(disks, *vm.StorageProfile.DataDisks)
 
-	if isManagedDisk {
+	if opt.isManagedDisk {
 		managedDisk := &compute.ManagedDiskParameters{ID: &diskURI}
-		if diskEncryptionSetID == "" {
+		if opt.diskEncryptionSetID == "" {
 			if vm.StorageProfile.OsDisk != nil &&
 				vm.StorageProfile.OsDisk.ManagedDisk != nil &&
 				vm.StorageProfile.OsDisk.ManagedDisk.DiskEncryptionSet != nil &&
 				vm.StorageProfile.OsDisk.ManagedDisk.DiskEncryptionSet.ID != nil {
 				// set diskEncryptionSet as value of os disk by default
-				diskEncryptionSetID = *vm.StorageProfile.OsDisk.ManagedDisk.DiskEncryptionSet.ID
+				opt.diskEncryptionSetID = *vm.StorageProfile.OsDisk.ManagedDisk.DiskEncryptionSet.ID
 			}
 		}
-		if diskEncryptionSetID != "" {
-			managedDisk.DiskEncryptionSet = &compute.DiskEncryptionSetParameters{ID: &diskEncryptionSetID}
+		if opt.diskEncryptionSetID != "" {
+			managedDisk.DiskEncryptionSet = &compute.DiskEncryptionSetParameters{ID: &opt.diskEncryptionSetID}
 		}
 		disks = append(disks,
 			compute.DataDisk{
-				Name:                    &diskName,
-				Lun:                     &lun,
-				Caching:                 cachingMode,
+				Name:                    &opt.diskName,
+				Lun:                     &opt.lun,
+				Caching:                 opt.cachingMode,
 				CreateOption:            "attach",
 				ManagedDisk:             managedDisk,
-				WriteAcceleratorEnabled: to.BoolPtr(writeAcceleratorEnabled),
+				WriteAcceleratorEnabled: to.BoolPtr(opt.writeAcceleratorEnabled),
 			})
 	} else {
 		disks = append(disks,
 			compute.DataDisk{
-				Name: &diskName,
+				Name: &opt.diskName,
 				Vhd: &compute.VirtualHardDisk{
 					URI: &diskURI,
 				},
-				Lun:          &lun,
-				Caching:      cachingMode,
+				Lun:          &opt.lun,
+				Caching:      opt.cachingMode,
 				CreateOption: "attach",
 			})
 	}
@@ -90,7 +90,7 @@ func (as *availabilitySet) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 			},
 		},
 	}
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk(%s, %s) with DiskEncryptionSetID(%s)", nodeResourceGroup, vmName, diskName, diskURI, diskEncryptionSetID)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk(%s, %s) with DiskEncryptionSetID(%s)", nodeResourceGroup, vmName, opt.diskName, diskURI, opt.diskEncryptionSetID)
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
 
@@ -99,29 +99,28 @@ func (as *availabilitySet) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 
 	rerr := as.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, newVM, "attach_disk")
 	if rerr != nil {
-		klog.Errorf("azureDisk - attach disk(%s, %s) on rg(%s) vm(%s) failed, err: %v", diskName, diskURI, nodeResourceGroup, vmName, rerr)
+		klog.Errorf("azureDisk - attach disk(%s, %s) on rg(%s) vm(%s) failed, err: %v", opt.diskName, diskURI, nodeResourceGroup, vmName, rerr)
 		if rerr.HTTPStatusCode == http.StatusNotFound {
-			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%s, %s) on rg(%s) vm(%s)", diskName, diskURI, nodeResourceGroup, vmName)
+			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%s, %s) on rg(%s) vm(%s)", opt.diskName, diskURI, nodeResourceGroup, vmName)
 			disks := as.filterNonExistingDisks(ctx, *newVM.VirtualMachineProperties.StorageProfile.DataDisks)
 			newVM.VirtualMachineProperties.StorageProfile.DataDisks = &disks
 			rerr = as.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, newVM, "attach_disk")
 		}
 	}
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk(%s, %s) returned with %v", nodeResourceGroup, vmName, diskName, diskURI, rerr)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk(%s, %s) returned with %v", nodeResourceGroup, vmName, opt.diskName, diskURI, rerr)
 	if rerr != nil {
 		return rerr.Error()
 	}
 	return nil
 }
 
-// DetachDisk detaches a disk from host
-// the vhd can be identified by diskName or diskURI
-func (as *availabilitySet) DetachDisk(diskName, diskURI string, nodeName types.NodeName) error {
+// DetachDisk detaches a disk from VM
+func (as *availabilitySet) DetachDisk(nodeName types.NodeName, diskURI string, opt *DetachDiskOptions) error {
 	vm, err := as.getVirtualMachine(nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		// if host doesn't exist, no need to detach
-		klog.Warningf("azureDisk - cannot find node %s, skip detaching disk(%s, %s)", nodeName, diskName, diskURI)
+		klog.Warningf("azureDisk - cannot find node %s, skip detaching disk(%s, %s)", nodeName, opt.diskName, diskURI)
 		return nil
 	}
 
@@ -136,11 +135,11 @@ func (as *availabilitySet) DetachDisk(diskName, diskURI string, nodeName types.N
 
 	bFoundDisk := false
 	for i, disk := range disks {
-		if disk.Lun != nil && (disk.Name != nil && diskName != "" && strings.EqualFold(*disk.Name, diskName)) ||
+		if disk.Lun != nil && (disk.Name != nil && opt.diskName != "" && strings.EqualFold(*disk.Name, opt.diskName)) ||
 			(disk.Vhd != nil && disk.Vhd.URI != nil && diskURI != "" && strings.EqualFold(*disk.Vhd.URI, diskURI)) ||
 			(disk.ManagedDisk != nil && diskURI != "" && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
 			// found the disk
-			klog.V(2).Infof("azureDisk - detach disk: name %q uri %q", diskName, diskURI)
+			klog.V(2).Infof("azureDisk - detach disk: name %q uri %q", opt.diskName, diskURI)
 			if strings.EqualFold(as.cloud.Environment.Name, AzureStackCloudName) {
 				disks = append(disks[:i], disks[i+1:]...)
 			} else {
@@ -153,7 +152,7 @@ func (as *availabilitySet) DetachDisk(diskName, diskURI string, nodeName types.N
 
 	if !bFoundDisk {
 		// only log here, next action is to update VM status with original meta data
-		klog.Errorf("detach azure disk: disk %s not found, diskURI: %s", diskName, diskURI)
+		klog.Errorf("detach azure disk: disk %s not found, diskURI: %s", opt.diskName, diskURI)
 	}
 
 	newVM := compute.VirtualMachineUpdate{
@@ -163,7 +162,7 @@ func (as *availabilitySet) DetachDisk(diskName, diskURI string, nodeName types.N
 			},
 		},
 	}
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%s, %s)", nodeResourceGroup, vmName, diskName, diskURI)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%s, %s)", nodeResourceGroup, vmName, opt.diskName, diskURI)
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
 
@@ -172,16 +171,16 @@ func (as *availabilitySet) DetachDisk(diskName, diskURI string, nodeName types.N
 
 	rerr := as.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, newVM, "detach_disk")
 	if rerr != nil {
-		klog.Errorf("azureDisk - detach disk(%s, %s) on rg(%s) vm(%s) failed, err: %v", diskName, diskURI, nodeResourceGroup, vmName, rerr)
+		klog.Errorf("azureDisk - detach disk(%s, %s) on rg(%s) vm(%s) failed, err: %v", opt.diskName, diskURI, nodeResourceGroup, vmName, rerr)
 		if rerr.HTTPStatusCode == http.StatusNotFound {
-			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%s, %s) on rg(%s) vm(%s)", diskName, diskURI, nodeResourceGroup, vmName)
+			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%s, %s) on rg(%s) vm(%s)", opt.diskName, diskURI, nodeResourceGroup, vmName)
 			disks := as.filterNonExistingDisks(ctx, *vm.StorageProfile.DataDisks)
 			newVM.VirtualMachineProperties.StorageProfile.DataDisks = &disks
 			rerr = as.VirtualMachinesClient.Update(ctx, nodeResourceGroup, vmName, newVM, "detach_disk")
 		}
 	}
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%s, %s) returned with %v", nodeResourceGroup, vmName, diskName, diskURI, rerr)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%s, %s) returned with %v", nodeResourceGroup, vmName, opt.diskName, diskURI, rerr)
 	if rerr != nil {
 		return rerr.Error()
 	}
