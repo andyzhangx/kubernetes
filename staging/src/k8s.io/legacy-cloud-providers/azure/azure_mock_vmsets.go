@@ -234,17 +234,17 @@ func (mr *MockVMSetMockRecorder) AttachDisk(nodeName, diskURI, opt interface{}) 
 }
 
 // DetachDisk mocks base method
-func (m *MockVMSet) DetachDisk(nodeName types.NodeName, diskURI string, opt *DetachDiskOptions) error {
+func (m *MockVMSet) DetachDisk(nodeName types.NodeName, diskMap map[string]*DetachDiskOptions) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DetachDisk", opt, nodeName, diskURI)
+	ret := m.ctrl.Call(m, "DetachDisk", nodeName, diskMap)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DetachDisk indicates an expected call of DetachDisk
-func (mr *MockVMSetMockRecorder) DetachDisk(nodeName, diskURI, opt interface{}) *gomock.Call {
+func (mr *MockVMSetMockRecorder) DetachDisk(nodeName, diskMap interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetachDisk", reflect.TypeOf((*MockVMSet)(nil).DetachDisk), nodeName, diskURI, opt)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetachDisk", reflect.TypeOf((*MockVMSet)(nil).DetachDisk), nodeName, diskMap)
 }
 
 // GetDataDisks mocks base method

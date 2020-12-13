@@ -117,7 +117,7 @@ func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskURI string, opt *Att
 }
 
 // DetachDisk detaches a disk from VM
-func (ss *scaleSet) DetachDisk(nodeName types.NodeName, diskURI string, opt *DetachDiskOptions) error {
+func (ss *scaleSet) DetachDisk(nodeName types.NodeName, diskMap map[string]*DetachDiskOptions) error {
 	vmName := mapNodeNameToVMName(nodeName)
 	ssName, instanceID, vm, err := ss.getVmssVM(vmName, azcache.CacheReadTypeDefault)
 	if err != nil {
@@ -136,24 +136,25 @@ func (ss *scaleSet) DetachDisk(nodeName types.NodeName, diskURI string, opt *Det
 	}
 	bFoundDisk := false
 	for i, disk := range disks {
-		if disk.Lun != nil && (disk.Name != nil && opt.diskName != "" && strings.EqualFold(*disk.Name, opt.diskName)) ||
-			(disk.Vhd != nil && disk.Vhd.URI != nil && diskURI != "" && strings.EqualFold(*disk.Vhd.URI, diskURI)) ||
-			(disk.ManagedDisk != nil && diskURI != "" && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
-			// found the disk
-			klog.V(2).Infof("azureDisk - detach disk: name %q uri %q", opt.diskName, diskURI)
-			if strings.EqualFold(ss.cloud.Environment.Name, AzureStackCloudName) {
-				disks = append(disks[:i], disks[i+1:]...)
-			} else {
-				disks[i].ToBeDetached = to.BoolPtr(true)
+		for diskURI, opt := range diskMap {
+			if disk.Lun != nil && (disk.Name != nil && opt.diskName != "" && strings.EqualFold(*disk.Name, opt.diskName)) ||
+				(disk.Vhd != nil && disk.Vhd.URI != nil && diskURI != "" && strings.EqualFold(*disk.Vhd.URI, diskURI)) ||
+				(disk.ManagedDisk != nil && diskURI != "" && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
+				// found the disk
+				klog.V(2).Infof("azureDisk - detach disk: name %q uri %q", opt.diskName, diskURI)
+				if strings.EqualFold(ss.cloud.Environment.Name, AzureStackCloudName) {
+					disks = append(disks[:i], disks[i+1:]...)
+				} else {
+					disks[i].ToBeDetached = to.BoolPtr(true)
+				}
+				bFoundDisk = true
 			}
-			bFoundDisk = true
-			break
 		}
 	}
 
 	if !bFoundDisk {
 		// only log here, next action is to update VM status with original meta data
-		klog.Errorf("detach azure disk: disk %s not found, diskURI: %s", opt.diskName, diskURI)
+		klog.Errorf("detach azure disk on node(%s): disk list(%v) not found", nodeName, diskMap)
 	}
 
 	newVM := compute.VirtualMachineScaleSetVM{
@@ -170,19 +171,19 @@ func (ss *scaleSet) DetachDisk(nodeName types.NodeName, diskURI string, opt *Det
 	// Invalidate the cache right after updating
 	defer ss.deleteCacheForNode(vmName)
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%s, %s)", nodeResourceGroup, nodeName, opt.diskName, diskURI)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk list(%v)", nodeResourceGroup, nodeName, diskMap)
 	rerr := ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, newVM, "detach_disk")
 	if rerr != nil {
-		klog.Errorf("azureDisk - detach disk(%s, %s) on rg(%s) vm(%s) failed, err: %v", opt.diskName, diskURI, nodeResourceGroup, nodeName, rerr)
+		klog.Errorf("azureDisk - detach disk list(%v) on rg(%s) vm(%s) failed, err: %v", diskMap, nodeResourceGroup, nodeName, rerr)
 		if rerr.HTTPStatusCode == http.StatusNotFound {
-			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%s, %s) on rg(%s) vm(%s)", opt.diskName, diskURI, nodeResourceGroup, nodeName)
+			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%v) on rg(%s) vm(%s)", diskMap, nodeResourceGroup, nodeName)
 			disks := ss.filterNonExistingDisks(ctx, *newVM.VirtualMachineScaleSetVMProperties.StorageProfile.DataDisks)
 			newVM.VirtualMachineScaleSetVMProperties.StorageProfile.DataDisks = &disks
 			rerr = ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, newVM, "detach_disk")
 		}
 	}
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%s, %s) returned with %v", nodeResourceGroup, nodeName, opt.diskName, diskURI, rerr)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%v) returned with %v", nodeResourceGroup, nodeName, diskMap, rerr)
 	if rerr != nil {
 		return rerr.Error()
 	}

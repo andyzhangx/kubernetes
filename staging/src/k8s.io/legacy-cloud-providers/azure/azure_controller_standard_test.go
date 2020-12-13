@@ -171,7 +171,10 @@ func TestStandardDetachDisk(t *testing.T) {
 		options := DetachDiskOptions{
 			diskName: test.diskName,
 		}
-		err := vmSet.DetachDisk(test.nodeName, "uri", &options)
+		diskMap := map[string]*DetachDiskOptions{
+			"uri": &options,
+		}
+		err := vmSet.DetachDisk(test.nodeName, diskMap)
 		assert.Equal(t, test.expectedError, err != nil, "TestCase[%d]: %s", i, test.desc)
 		if !test.expectedError && test.diskName != "" {
 			dataDisks, err := vmSet.GetDataDisks(test.nodeName, azcache.CacheReadTypeDefault)

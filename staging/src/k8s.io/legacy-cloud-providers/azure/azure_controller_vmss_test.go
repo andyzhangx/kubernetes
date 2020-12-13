@@ -237,7 +237,10 @@ func TestDetachDiskWithVMSS(t *testing.T) {
 		options := DetachDiskOptions{
 			diskName: *test.existedDisk.Name,
 		}
-		err = ss.DetachDisk(test.vmssvmName, diskName, &options)
+		diskMap := map[string]*DetachDiskOptions{
+			diskName: &options,
+		}
+		err = ss.DetachDisk(test.vmssvmName, diskMap)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s, err: %v", i, test.desc, err)
 		assert.Equal(t, test.expectedErrMsg, err, "TestCase[%d]: %s, expected error: %v, return error: %v", i, test.desc, test.expectedErrMsg, err)
 
