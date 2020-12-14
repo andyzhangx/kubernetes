@@ -243,6 +243,12 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 	// copy diskMap from queue for attach disk process
 	diskMapCopy := make(map[string]*AttachDiskOptions)
 	for uri, opt := range diskMap {
+		if opt.count == 0 {
+			klog.Warningf("uncleaned up 0 reference count, diskURI: %s, nodeName: %s, diskMap: %s",
+				uri, nodeName, diskMap)
+			delete(diskMap, uri)
+			continue
+		}
 		diskMapCopy[uri] = opt
 		if uri == disk {
 			// delete original attach disk request
