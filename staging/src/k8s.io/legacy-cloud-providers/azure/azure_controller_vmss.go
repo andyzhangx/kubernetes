@@ -31,7 +31,7 @@ import (
 )
 
 // AttachDisk attaches a disk to vm
-func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskURI string, opt *AttachDiskOptions) error {
+func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskMap map[string]*AttachDiskOptions) error {
 	vmName := mapNodeNameToVMName(nodeName)
 	ssName, instanceID, vm, err := ss.getVmssVM(vmName, azcache.CacheReadTypeDefault)
 	if err != nil {
@@ -48,41 +48,45 @@ func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskURI string, opt *Att
 		disks = make([]compute.DataDisk, len(*vm.StorageProfile.DataDisks))
 		copy(disks, *vm.StorageProfile.DataDisks)
 	}
-	if opt.isManagedDisk {
-		managedDisk := &compute.ManagedDiskParameters{ID: &diskURI}
-		if opt.diskEncryptionSetID == "" {
-			if vm.StorageProfile.OsDisk != nil &&
-				vm.StorageProfile.OsDisk.ManagedDisk != nil &&
-				vm.StorageProfile.OsDisk.ManagedDisk.DiskEncryptionSet != nil &&
-				vm.StorageProfile.OsDisk.ManagedDisk.DiskEncryptionSet.ID != nil {
-				// set diskEncryptionSet as value of os disk by default
-				opt.diskEncryptionSetID = *vm.StorageProfile.OsDisk.ManagedDisk.DiskEncryptionSet.ID
+
+	for diskURI, opt := range diskMap {
+		if opt.isManagedDisk {
+			managedDisk := &compute.ManagedDiskParameters{ID: &diskURI}
+			if opt.diskEncryptionSetID == "" {
+				if vm.StorageProfile.OsDisk != nil &&
+					vm.StorageProfile.OsDisk.ManagedDisk != nil &&
+					vm.StorageProfile.OsDisk.ManagedDisk.DiskEncryptionSet != nil &&
+					vm.StorageProfile.OsDisk.ManagedDisk.DiskEncryptionSet.ID != nil {
+					// set diskEncryptionSet as value of os disk by default
+					opt.diskEncryptionSetID = *vm.StorageProfile.OsDisk.ManagedDisk.DiskEncryptionSet.ID
+				}
 			}
+			if opt.diskEncryptionSetID != "" {
+				managedDisk.DiskEncryptionSet = &compute.DiskEncryptionSetParameters{ID: &opt.diskEncryptionSetID}
+			}
+			disks = append(disks,
+				compute.DataDisk{
+					Name:                    &opt.diskName,
+					Lun:                     &opt.lun,
+					Caching:                 compute.CachingTypes(opt.cachingMode),
+					CreateOption:            "attach",
+					ManagedDisk:             managedDisk,
+					WriteAcceleratorEnabled: to.BoolPtr(opt.writeAcceleratorEnabled),
+				})
+		} else {
+			disks = append(disks,
+				compute.DataDisk{
+					Name: &opt.diskName,
+					Vhd: &compute.VirtualHardDisk{
+						URI: &diskURI,
+					},
+					Lun:          &opt.lun,
+					Caching:      compute.CachingTypes(opt.cachingMode),
+					CreateOption: "attach",
+				})
 		}
-		if opt.diskEncryptionSetID != "" {
-			managedDisk.DiskEncryptionSet = &compute.DiskEncryptionSetParameters{ID: &opt.diskEncryptionSetID}
-		}
-		disks = append(disks,
-			compute.DataDisk{
-				Name:                    &opt.diskName,
-				Lun:                     &opt.lun,
-				Caching:                 compute.CachingTypes(opt.cachingMode),
-				CreateOption:            "attach",
-				ManagedDisk:             managedDisk,
-				WriteAcceleratorEnabled: to.BoolPtr(opt.writeAcceleratorEnabled),
-			})
-	} else {
-		disks = append(disks,
-			compute.DataDisk{
-				Name: &opt.diskName,
-				Vhd: &compute.VirtualHardDisk{
-					URI: &diskURI,
-				},
-				Lun:          &opt.lun,
-				Caching:      compute.CachingTypes(opt.cachingMode),
-				CreateOption: "attach",
-			})
 	}
+
 	newVM := compute.VirtualMachineScaleSetVM{
 		VirtualMachineScaleSetVMProperties: &compute.VirtualMachineScaleSetVMProperties{
 			StorageProfile: &compute.StorageProfile{
@@ -97,19 +101,19 @@ func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskURI string, opt *Att
 	// Invalidate the cache right after updating
 	defer ss.deleteCacheForNode(vmName)
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk(%s, %s) with DiskEncryptionSetID(%s)", nodeResourceGroup, nodeName, opt.diskName, diskURI, opt.diskEncryptionSetID)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk list(%v)", nodeResourceGroup, nodeName, diskMap)
 	rerr := ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, newVM, "attach_disk")
 	if rerr != nil {
-		klog.Errorf("azureDisk - attach disk(%s, %s) on rg(%s) vm(%s) failed, err: %v", opt.diskName, diskURI, nodeResourceGroup, nodeName, rerr)
+		klog.Errorf("azureDisk - attach disk list(%v) on rg(%s) vm(%s) failed, err: %v", diskMap, nodeResourceGroup, nodeName, rerr)
 		if rerr.HTTPStatusCode == http.StatusNotFound {
-			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%s, %s) on rg(%s) vm(%s)", opt.diskName, diskURI, nodeResourceGroup, nodeName)
+			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%v) on rg(%s) vm(%s)", diskMap, nodeResourceGroup, nodeName)
 			disks := ss.filterNonExistingDisks(ctx, *newVM.VirtualMachineScaleSetVMProperties.StorageProfile.DataDisks)
 			newVM.VirtualMachineScaleSetVMProperties.StorageProfile.DataDisks = &disks
 			rerr = ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, newVM, "attach_disk")
 		}
 	}
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk(%s, %s)  returned with %v", nodeResourceGroup, nodeName, opt.diskName, diskURI, rerr)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk list(%s, %s)  returned with %v", nodeResourceGroup, nodeName, diskMap, rerr)
 	if rerr != nil {
 		return rerr.Error()
 	}

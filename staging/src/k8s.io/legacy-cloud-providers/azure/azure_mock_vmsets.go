@@ -220,17 +220,17 @@ func (mr *MockVMSetMockRecorder) EnsureBackendPoolDeleted(service, backendPoolID
 }
 
 // AttachDisk mocks base method
-func (m *MockVMSet) AttachDisk(nodeName types.NodeName, diskURI string, opt *AttachDiskOptions) error {
+func (m *MockVMSet) AttachDisk(nodeName types.NodeName, diskMap map[string]*AttachDiskOptions) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AttachDisk", opt, nodeName, diskURI)
+	ret := m.ctrl.Call(m, "AttachDisk", nodeName, diskMap)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AttachDisk indicates an expected call of AttachDisk
-func (mr *MockVMSetMockRecorder) AttachDisk(nodeName, diskURI, opt interface{}) *gomock.Call {
+func (mr *MockVMSetMockRecorder) AttachDisk(nodeName, diskMap interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachDisk", reflect.TypeOf((*MockVMSet)(nil).AttachDisk), nodeName, diskURI, opt)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachDisk", reflect.TypeOf((*MockVMSet)(nil).AttachDisk), nodeName, diskMap)
 }
 
 // DetachDisk mocks base method

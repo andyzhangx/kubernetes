@@ -67,7 +67,7 @@ type VMSet interface {
 	EnsureBackendPoolDeleted(service *v1.Service, backendPoolID, vmSetName string, backendAddressPools *[]network.BackendAddressPool) error
 
 	// AttachDisk attaches a disk to vm
-	AttachDisk(nodeName types.NodeName, diskURI string, opt *AttachDiskOptions) error
+	AttachDisk(nodeName types.NodeName, diskMap map[string]*AttachDiskOptions) error
 	// DetachDisk detaches a disk from vm
 	DetachDisk(nodeName types.NodeName, diskMap map[string]*DetachDiskOptions) error
 	// GetDataDisks gets a list of data disks attached to the node.

@@ -130,7 +130,7 @@ func TestAttachDiskWithVMSS(t *testing.T) {
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 			testCloud.SubscriptionID, testCloud.ResourceGroup, *test.existedDisk.Name)
 
-		option := AttachDiskOptions{
+		options := AttachDiskOptions{
 			lun:                     0,
 			isManagedDisk:           test.isManagedDisk,
 			diskName:                "disk-name",
@@ -138,7 +138,10 @@ func TestAttachDiskWithVMSS(t *testing.T) {
 			diskEncryptionSetID:     "",
 			writeAcceleratorEnabled: true,
 		}
-		err = ss.AttachDisk(test.vmssvmName, diskURI, &option)
+		diskMap := map[string]*AttachDiskOptions{
+			diskURI: &options,
+		}
+		err = ss.AttachDisk(test.vmssvmName, diskMap)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s, return error: %v", i, test.desc, err)
 		assert.Equal(t, test.expectedErrMsg, err, "TestCase[%d]: %s, expected error: %v, return error: %v", i, test.desc, test.expectedErrMsg, err)
 	}

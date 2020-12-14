@@ -104,7 +104,7 @@ func TestStandardAttachDisk(t *testing.T) {
 			mockVMsClient.EXPECT().Update(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		}
 
-		option := AttachDiskOptions{
+		options := AttachDiskOptions{
 			lun:                     0,
 			isManagedDisk:           test.isManagedDisk,
 			diskName:                "",
@@ -112,7 +112,10 @@ func TestStandardAttachDisk(t *testing.T) {
 			diskEncryptionSetID:     "",
 			writeAcceleratorEnabled: false,
 		}
-		err := vmSet.AttachDisk(test.nodeName, "uri", &option)
+		diskMap := map[string]*AttachDiskOptions{
+			"uri": &options,
+		}
+		err := vmSet.AttachDisk(test.nodeName, diskMap)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s, err: %v", i, test.desc, err)
 	}
 }
