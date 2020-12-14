@@ -92,7 +92,6 @@ type controllerCommon struct {
 	vmLockMap *lockMap
 	cloud     *Cloud
 	// store disks map that is waiting for attach or detach
-	waitingDiskAttachMap sync.Map
 	waitingDiskDetachMap sync.Map
 }
 
@@ -109,6 +108,7 @@ type AttachDiskOptions struct {
 // DetachDiskOptions detach disk options
 type DetachDiskOptions struct {
 	diskName string
+	count    int32
 }
 
 // getNodeVMSet gets the VMSet interface based on config.VMType and the real virtual machine type.
@@ -250,7 +250,7 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	klog.V(2).Infof("detach %v from node %q", diskURI, nodeName)
 
 	// get diskMap
-	var diskMap, diskMapCopy map[string]*DetachDiskOptions
+	var diskMap map[string]*DetachDiskOptions
 	node := strings.ToLower(string(nodeName))
 	v, ok := c.waitingDiskDetachMap.Load(node)
 	if ok {
@@ -264,23 +264,32 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 
 	// lock and set detach disk queue
 	disk := strings.ToLower(string(diskURI))
-	lockKey := node + "detachmap"
-	c.vmLockMap.LockEntry(lockKey)
+	detachDiskMapKey := node + "detachmap"
+	c.vmLockMap.LockEntry(detachDiskMapKey)
 	if _, ok := diskMap[disk]; !ok {
 		options := DetachDiskOptions{
 			diskName: diskName,
 		}
 		diskMap[disk] = &options
 	}
+	diskMap[disk].count++
+	c.vmLockMap.UnlockEntry(detachDiskMapKey)
+
+	c.vmLockMap.LockEntry(node)
+	c.vmLockMap.LockEntry(detachDiskMapKey)
 	// copy diskMap for detach disk process
-	diskMapCopy = make(map[string]*DetachDiskOptions)
+	diskMapCopy := make(map[string]*DetachDiskOptions)
 	for k, v := range diskMap {
 		diskMapCopy[k] = v
+		if k == disk {
+			// delete original detach disk request
+			diskMap[k].count--
+			if diskMap[k].count <= 0 {
+				delete(diskMap, k)
+			}
+		}
 	}
-	c.vmLockMap.UnlockEntry(lockKey)
-
-	// make the lock here as small as possible
-	c.vmLockMap.LockEntry(node)
+	c.vmLockMap.UnlockEntry(detachDiskMapKey)
 	c.diskAttachDetachMap.Store(disk, "detaching")
 	err = vmset.DetachDisk(nodeName, diskMapCopy)
 	c.diskAttachDetachMap.Delete(disk)
