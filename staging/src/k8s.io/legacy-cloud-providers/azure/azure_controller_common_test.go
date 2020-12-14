@@ -132,7 +132,7 @@ func TestCommonAttachDisk(t *testing.T) {
 			resourceGroup:         testCloud.ResourceGroup,
 			subscriptionID:        testCloud.SubscriptionID,
 			cloud:                 testCloud,
-			vmLockMap:             newLockMap(),
+			lockMap:               newLockMap(),
 		}
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 			testCloud.SubscriptionID, testCloud.ResourceGroup, *test.existedDisk.Name)
@@ -236,7 +236,7 @@ func TestCommonAttachDiskWithVMSS(t *testing.T) {
 			resourceGroup:         testCloud.ResourceGroup,
 			subscriptionID:        testCloud.SubscriptionID,
 			cloud:                 testCloud,
-			vmLockMap:             newLockMap(),
+			lockMap:               newLockMap(),
 		}
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/%s",
 			testCloud.SubscriptionID, testCloud.ResourceGroup, *test.existedDisk.Name)
@@ -310,7 +310,7 @@ func TestCommonDetachDisk(t *testing.T) {
 			resourceGroup:         testCloud.ResourceGroup,
 			subscriptionID:        testCloud.SubscriptionID,
 			cloud:                 testCloud,
-			vmLockMap:             newLockMap(),
+			lockMap:               newLockMap(),
 		}
 		diskURI := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/disk-name",
 			testCloud.SubscriptionID, testCloud.ResourceGroup)
@@ -368,7 +368,7 @@ func TestGetDiskLun(t *testing.T) {
 			resourceGroup:         testCloud.ResourceGroup,
 			subscriptionID:        testCloud.SubscriptionID,
 			cloud:                 testCloud,
-			vmLockMap:             newLockMap(),
+			lockMap:               newLockMap(),
 		}
 		expectedVMs := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
 		mockVMsClient := testCloud.VirtualMachinesClient.(*mockvmclient.MockInterface)
@@ -414,7 +414,7 @@ func TestGetNextDiskLun(t *testing.T) {
 			resourceGroup:         testCloud.ResourceGroup,
 			subscriptionID:        testCloud.SubscriptionID,
 			cloud:                 testCloud,
-			vmLockMap:             newLockMap(),
+			lockMap:               newLockMap(),
 		}
 		expectedVMs := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, test.isDataDisksFull)
 		mockVMsClient := testCloud.VirtualMachinesClient.(*mockvmclient.MockInterface)
@@ -463,7 +463,7 @@ func TestDisksAreAttached(t *testing.T) {
 			resourceGroup:         testCloud.ResourceGroup,
 			subscriptionID:        testCloud.SubscriptionID,
 			cloud:                 testCloud,
-			vmLockMap:             newLockMap(),
+			lockMap:               newLockMap(),
 		}
 		expectedVMs := setTestVirtualMachines(testCloud, map[string]string{"vm1": "PowerState/Running"}, false)
 		mockVMsClient := testCloud.VirtualMachinesClient.(*mockvmclient.MockInterface)
@@ -653,7 +653,7 @@ func TestCheckDiskExists(t *testing.T) {
 		resourceGroup:         testCloud.ResourceGroup,
 		subscriptionID:        testCloud.SubscriptionID,
 		cloud:                 testCloud,
-		vmLockMap:             newLockMap(),
+		lockMap:               newLockMap(),
 	}
 	// create a new disk before running test
 	newDiskName := "newdisk"
@@ -707,7 +707,7 @@ func TestFilterNonExistingDisks(t *testing.T) {
 		resourceGroup:         testCloud.ResourceGroup,
 		subscriptionID:        testCloud.SubscriptionID,
 		cloud:                 testCloud,
-		vmLockMap:             newLockMap(),
+		lockMap:               newLockMap(),
 	}
 	// create a new disk before running test
 	diskURIPrefix := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/",
@@ -769,7 +769,7 @@ func TestFilterNonExistingDisksWithSpecialHTTPStatusCode(t *testing.T) {
 		resourceGroup:         testCloud.ResourceGroup,
 		subscriptionID:        testCloud.SubscriptionID,
 		cloud:                 testCloud,
-		vmLockMap:             newLockMap(),
+		lockMap:               newLockMap(),
 	}
 	// create a new disk before running test
 	diskURIPrefix := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/disks/",

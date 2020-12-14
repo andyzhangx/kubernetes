@@ -86,12 +86,11 @@ type controllerCommon struct {
 	location              string
 	storageEndpointSuffix string
 	resourceGroup         string
-	// store disk URI when disk is in attaching or detaching process
-	diskAttachDetachMap sync.Map
-	// vm disk map used to lock per vm update calls
-	vmLockMap *lockMap
-	cloud     *Cloud
-	// store disks map that is waiting for attach or detach
+	diskStateMap          sync.Map // <diskURI, attaching/detaching state>
+	lockMap               *lockMap
+	cloud                 *Cloud
+	// disk queue that is waiting for attach or detach on specific node
+	// <nodeName, map<diskURI, *AttachDiskOptions/DetachDiskOptions>>
 	attachDiskQueue sync.Map
 	detachDiskQueue sync.Map
 }
@@ -223,7 +222,7 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 	// insert attach disk request to queue
 	disk := strings.ToLower(string(diskURI))
 	attachDiskMapKey := node + "attachqueue"
-	c.vmLockMap.LockEntry(attachDiskMapKey)
+	c.lockMap.LockEntry(attachDiskMapKey)
 	if _, ok := diskMap[disk]; !ok {
 		options := AttachDiskOptions{
 			lun:                     -1,
@@ -236,11 +235,11 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 		diskMap[disk] = &options
 	}
 	diskMap[disk].count++
-	c.vmLockMap.UnlockEntry(attachDiskMapKey)
+	c.lockMap.UnlockEntry(attachDiskMapKey)
 
-	c.vmLockMap.LockEntry(node)
-	defer c.vmLockMap.UnlockEntry(node)
-
+	c.lockMap.LockEntry(node)
+	defer c.lockMap.UnlockEntry(node)
+	c.lockMap.LockEntry(attachDiskMapKey)
 	// copy diskMap from queue for attach disk process
 	diskMapCopy := make(map[string]*AttachDiskOptions)
 	for uri, opt := range diskMap {
@@ -253,6 +252,7 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 			}
 		}
 	}
+	c.lockMap.UnlockEntry(attachDiskMapKey)
 
 	lun, err := c.SetDiskLun(nodeName, disk, diskMapCopy)
 	if err != nil {
@@ -261,8 +261,8 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 	}
 
 	klog.V(2).Infof("Trying to attach volume %q lun %d to node %q.", diskURI, lun, nodeName)
-	c.diskAttachDetachMap.Store(disk, "attaching")
-	defer c.diskAttachDetachMap.Delete(disk)
+	c.diskStateMap.Store(disk, "attaching")
+	defer c.diskStateMap.Delete(disk)
 	return lun, vmset.AttachDisk(nodeName, diskMapCopy)
 }
 
@@ -303,7 +303,7 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	// insert detach disk request to queue
 	disk := strings.ToLower(string(diskURI))
 	detachDiskMapKey := node + "detachqueue"
-	c.vmLockMap.LockEntry(detachDiskMapKey)
+	c.lockMap.LockEntry(detachDiskMapKey)
 	if _, ok := diskMap[disk]; !ok {
 		options := DetachDiskOptions{
 			diskName: diskName,
@@ -311,10 +311,10 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 		diskMap[disk] = &options
 	}
 	diskMap[disk].count++
-	c.vmLockMap.UnlockEntry(detachDiskMapKey)
+	c.lockMap.UnlockEntry(detachDiskMapKey)
 
-	c.vmLockMap.LockEntry(node)
-	c.vmLockMap.LockEntry(detachDiskMapKey)
+	c.lockMap.LockEntry(node)
+	c.lockMap.LockEntry(detachDiskMapKey)
 	// copy diskMap from queue for detach disk process
 	diskMapCopy := make(map[string]*DetachDiskOptions)
 	for uri, opt := range diskMap {
@@ -327,11 +327,11 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 			}
 		}
 	}
-	c.vmLockMap.UnlockEntry(detachDiskMapKey)
-	c.diskAttachDetachMap.Store(disk, "detaching")
+	c.lockMap.UnlockEntry(detachDiskMapKey)
+	c.diskStateMap.Store(disk, "detaching")
 	err = vmset.DetachDisk(nodeName, diskMapCopy)
-	c.diskAttachDetachMap.Delete(disk)
-	c.vmLockMap.UnlockEntry(node)
+	c.diskStateMap.Delete(disk)
+	c.lockMap.UnlockEntry(node)
 
 	if err != nil {
 		if isInstanceNotFoundError(err) {
@@ -343,11 +343,11 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 		if retry.IsErrorRetriable(err) && c.cloud.CloudProviderBackoff {
 			klog.Warningf("azureDisk - update backing off: detach disk(%s, %s), err: %v", diskName, diskURI, err)
 			retryErr := kwait.ExponentialBackoff(c.cloud.RequestBackoff(), func() (bool, error) {
-				c.vmLockMap.LockEntry(node)
-				c.diskAttachDetachMap.Store(disk, "detaching")
+				c.lockMap.LockEntry(node)
+				c.diskStateMap.Store(disk, "detaching")
 				err := vmset.DetachDisk(nodeName, diskMapCopy)
-				c.diskAttachDetachMap.Delete(disk)
-				c.vmLockMap.UnlockEntry(node)
+				c.diskStateMap.Delete(disk)
+				c.lockMap.UnlockEntry(node)
 
 				retriable := false
 				if err != nil && retry.IsErrorRetriable(err) {

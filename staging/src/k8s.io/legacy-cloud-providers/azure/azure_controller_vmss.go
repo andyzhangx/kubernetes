@@ -51,6 +51,18 @@ func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskMap map[string]*Atta
 
 	for diskURI, opt := range diskMap {
 		if opt.isManagedDisk {
+			attached := false
+			for _, disk := range disks {
+				if disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI) {
+					attached = true
+					break
+				}
+			}
+			if attached {
+				klog.V(2).Infof("azureDisk - disk(%s) already attached to node(%s)", diskURI, nodeName)
+				return nil
+			}
+
 			managedDisk := &compute.ManagedDiskParameters{ID: &diskURI}
 			if opt.diskEncryptionSetID == "" {
 				if vm.StorageProfile.OsDisk != nil &&
@@ -101,10 +113,10 @@ func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskMap map[string]*Atta
 	// Invalidate the cache right after updating
 	defer ss.deleteCacheForNode(vmName)
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk list(%v)", nodeResourceGroup, nodeName, diskMap)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk list(%s)", nodeResourceGroup, nodeName, diskMap)
 	rerr := ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, newVM, "attach_disk")
 	if rerr != nil {
-		klog.Errorf("azureDisk - attach disk list(%v) on rg(%s) vm(%s) failed, err: %v", diskMap, nodeResourceGroup, nodeName, rerr)
+		klog.Errorf("azureDisk - attach disk list(%s) on rg(%s) vm(%s) failed, err: %v", diskMap, nodeResourceGroup, nodeName, rerr)
 		if rerr.HTTPStatusCode == http.StatusNotFound {
 			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%v) on rg(%s) vm(%s)", diskMap, nodeResourceGroup, nodeName)
 			disks := ss.filterNonExistingDisks(ctx, *newVM.VirtualMachineScaleSetVMProperties.StorageProfile.DataDisks)
@@ -113,7 +125,7 @@ func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskMap map[string]*Atta
 		}
 	}
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk list(%s, %s)  returned with %v", nodeResourceGroup, nodeName, diskMap, rerr)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk list(%s, %s) returned with %v", nodeResourceGroup, nodeName, diskMap, rerr)
 	if rerr != nil {
 		return rerr.Error()
 	}
@@ -158,7 +170,7 @@ func (ss *scaleSet) DetachDisk(nodeName types.NodeName, diskMap map[string]*Deta
 
 	if !bFoundDisk {
 		// only log here, next action is to update VM status with original meta data
-		klog.Errorf("detach azure disk on node(%s): disk list(%v) not found", nodeName, diskMap)
+		klog.Errorf("detach azure disk on node(%s): disk list(%s) not found", nodeName, diskMap)
 	}
 
 	newVM := compute.VirtualMachineScaleSetVM{
@@ -175,10 +187,10 @@ func (ss *scaleSet) DetachDisk(nodeName types.NodeName, diskMap map[string]*Deta
 	// Invalidate the cache right after updating
 	defer ss.deleteCacheForNode(vmName)
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk list(%v)", nodeResourceGroup, nodeName, diskMap)
+	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk list(%s)", nodeResourceGroup, nodeName, diskMap)
 	rerr := ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, newVM, "detach_disk")
 	if rerr != nil {
-		klog.Errorf("azureDisk - detach disk list(%v) on rg(%s) vm(%s) failed, err: %v", diskMap, nodeResourceGroup, nodeName, rerr)
+		klog.Errorf("azureDisk - detach disk list(%s) on rg(%s) vm(%s) failed, err: %v", diskMap, nodeResourceGroup, nodeName, rerr)
 		if rerr.HTTPStatusCode == http.StatusNotFound {
 			klog.Errorf("azureDisk - begin to filterNonExistingDisks(%v) on rg(%s) vm(%s)", diskMap, nodeResourceGroup, nodeName)
 			disks := ss.filterNonExistingDisks(ctx, *newVM.VirtualMachineScaleSetVMProperties.StorageProfile.DataDisks)
