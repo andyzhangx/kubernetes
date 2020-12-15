@@ -60,7 +60,7 @@ func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskMap map[string]*Atta
 			}
 			if attached {
 				klog.V(2).Infof("azureDisk - disk(%s) already attached to node(%s)", diskURI, nodeName)
-				return nil
+				continue
 			}
 
 			managedDisk := &compute.ManagedDiskParameters{ID: &diskURI}

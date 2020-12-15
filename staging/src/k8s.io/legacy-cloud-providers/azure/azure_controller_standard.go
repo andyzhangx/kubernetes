@@ -48,6 +48,18 @@ func (as *availabilitySet) AttachDisk(nodeName types.NodeName, diskMap map[strin
 
 	for diskURI, opt := range diskMap {
 		if opt.isManagedDisk {
+			attached := false
+			for _, disk := range disks {
+				if disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI) {
+					attached = true
+					break
+				}
+			}
+			if attached {
+				klog.V(2).Infof("azureDisk - disk(%s) already attached to node(%s)", diskURI, nodeName)
+				continue
+			}
+
 			managedDisk := &compute.ManagedDiskParameters{ID: &diskURI}
 			if opt.diskEncryptionSetID == "" {
 				if vm.StorageProfile.OsDisk != nil &&
