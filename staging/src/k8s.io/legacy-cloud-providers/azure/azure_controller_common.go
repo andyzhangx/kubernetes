@@ -266,7 +266,10 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 		return -1, fmt.Errorf("all LUNs are used, cannot attach volume (%s, %s) to instance %q (%v)", diskName, diskURI, instanceid, err)
 	}
 
-	klog.V(2).Infof("Trying to attach volume %q lun %d to node %q.", diskURI, lun, nodeName)
+	klog.V(2).Infof("Trying to attach volume %q lun %d to node %q, diskMap: %s", diskURI, lun, nodeName, diskMapCopy)
+	if len(diskMapCopy) == 0 {
+		return lun, nil
+	}
 	c.diskStateMap.Store(disk, "attaching")
 	defer c.diskStateMap.Delete(disk)
 	return lun, vmset.AttachDisk(nodeName, diskMapCopy)
@@ -324,6 +327,12 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	// copy diskMap from queue for detach disk process
 	diskMapCopy := make(map[string]*DetachDiskOptions)
 	for uri, opt := range diskMap {
+		if opt.count == 0 {
+			klog.Warningf("uncleaned up 0 reference count, diskURI: %s, nodeName: %s, diskMap: %s",
+				uri, nodeName, diskMap)
+			delete(diskMap, uri)
+			continue
+		}
 		diskMapCopy[uri] = opt
 		if uri == disk {
 			// delete original detach disk request
@@ -334,10 +343,14 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 		}
 	}
 	c.lockMap.UnlockEntry(detachDiskMapKey)
-	c.diskStateMap.Store(disk, "detaching")
-	err = vmset.DetachDisk(nodeName, diskMapCopy)
-	c.diskStateMap.Delete(disk)
-	c.lockMap.UnlockEntry(node)
+
+	klog.V(2).Infof("Trying to detach volume %q from node %q, diskMap: %s", diskURI, nodeName, diskMapCopy)
+	if len(diskMapCopy) > 0 {
+		c.diskStateMap.Store(disk, "detaching")
+		err = vmset.DetachDisk(nodeName, diskMapCopy)
+		c.diskStateMap.Delete(disk)
+		c.lockMap.UnlockEntry(node)
+	}
 
 	if err != nil {
 		if isInstanceNotFoundError(err) {
@@ -447,6 +460,12 @@ func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, d
 	for _, disk := range disks {
 		if disk.Lun != nil {
 			used[*disk.Lun] = true
+			if len(diskMap) == 0 {
+				// only need to find lun of diskURI since there are no disk attach requests
+				if disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI) {
+					return *disk.Lun, nil
+				}
+			}
 		}
 	}
 	var diskLuns []int32
