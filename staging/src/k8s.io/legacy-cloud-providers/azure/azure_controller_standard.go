@@ -49,7 +49,7 @@ func (as *availabilitySet) AttachDisk(nodeName types.NodeName, diskMap map[strin
 	for diskURI, opt := range diskMap {
 		if opt.isManagedDisk {
 			attached := false
-			for _, disk := range disks {
+			for _, disk := range *vm.StorageProfile.DataDisks {
 				if disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI) {
 					attached = true
 					break
