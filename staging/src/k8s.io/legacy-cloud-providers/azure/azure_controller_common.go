@@ -243,20 +243,8 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 	// copy diskMap from queue for attach disk process
 	diskMapCopy := make(map[string]*AttachDiskOptions)
 	for uri, opt := range diskMap {
-		if opt.count == 0 {
-			klog.Warningf("uncleaned up 0 reference count, diskURI: %s, nodeName: %s, diskMap: %s",
-				uri, nodeName, diskMap)
-			delete(diskMap, uri)
-			continue
-		}
 		diskMapCopy[uri] = opt
-		if uri == disk {
-			// delete original attach disk request
-			diskMap[uri].count--
-			if diskMap[uri].count <= 0 {
-				delete(diskMap, uri)
-			}
-		}
+		delete(diskMap, uri)
 	}
 	c.lockMap.UnlockEntry(attachDiskMapKey)
 
@@ -327,20 +315,8 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	// copy diskMap from queue for detach disk process
 	diskMapCopy := make(map[string]*DetachDiskOptions)
 	for uri, opt := range diskMap {
-		if opt.count == 0 {
-			klog.Warningf("uncleaned up 0 reference count, diskURI: %s, nodeName: %s, diskMap: %s",
-				uri, nodeName, diskMap)
-			delete(diskMap, uri)
-			continue
-		}
 		diskMapCopy[uri] = opt
-		if uri == disk {
-			// delete original detach disk request
-			diskMap[uri].count--
-			if diskMap[uri].count <= 0 {
-				delete(diskMap, uri)
-			}
-		}
+		delete(diskMap, uri)
 	}
 	c.lockMap.UnlockEntry(detachDiskMapKey)
 
@@ -456,18 +432,27 @@ func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, d
 		return -1, err
 	}
 
+	lun := int32(-1)
+	_, isDiskInQueue := diskMap[diskURI]
 	used := make([]bool, maxLUN)
 	for _, disk := range disks {
 		if disk.Lun != nil {
 			used[*disk.Lun] = true
-			if len(diskMap) == 0 {
-				// only need to find lun of diskURI since there are no disk attach requests
+			if !isDiskInQueue {
+				// find lun of diskURI since diskURI is not in diskMap
 				if disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI) {
-					return *disk.Lun, nil
+					lun = *disk.Lun
 				}
 			}
 		}
 	}
+	if !isDiskInQueue && lun < 0 {
+		return -1, fmt.Errorf("could not find disk(%s) in current disk list(%v) nor in diskMap(%v)", diskURI, disks, diskMap)
+	}
+	if len(diskMap) == 0 {
+		return lun, nil
+	}
+
 	var diskLuns []int32
 	count := 0
 	for k, v := range used {
@@ -485,7 +470,6 @@ func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, d
 			len(diskLuns), diskMap, len(diskMap), diskURI)
 	}
 
-	lun := int32(-1)
 	count = 0
 	for uri, opt := range diskMap {
 		if opt == nil {
