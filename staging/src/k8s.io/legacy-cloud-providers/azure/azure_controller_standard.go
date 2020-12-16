@@ -46,7 +46,9 @@ func (as *availabilitySet) AttachDisk(nodeName types.NodeName, diskMap map[strin
 	disks := make([]compute.DataDisk, len(*vm.StorageProfile.DataDisks))
 	copy(disks, *vm.StorageProfile.DataDisks)
 
-	for diskURI, opt := range diskMap {
+	for k, v := range diskMap {
+		diskURI := k
+		opt := v
 		if opt.isManagedDisk {
 			attached := false
 			for _, disk := range *vm.StorageProfile.DataDisks {

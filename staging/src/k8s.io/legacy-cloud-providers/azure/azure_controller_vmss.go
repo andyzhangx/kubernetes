@@ -49,7 +49,9 @@ func (ss *scaleSet) AttachDisk(nodeName types.NodeName, diskMap map[string]*Atta
 		copy(disks, *vm.StorageProfile.DataDisks)
 	}
 
-	for diskURI, opt := range diskMap {
+	for k, v := range diskMap {
+		diskURI := k
+		opt := v
 		if opt.isManagedDisk {
 			attached := false
 			for _, disk := range *vm.StorageProfile.DataDisks {
