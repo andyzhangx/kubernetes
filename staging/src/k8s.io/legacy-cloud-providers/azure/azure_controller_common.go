@@ -325,8 +325,8 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 		c.diskStateMap.Store(disk, "detaching")
 		err = vmset.DetachDisk(nodeName, diskMapCopy)
 		c.diskStateMap.Delete(disk)
-		c.lockMap.UnlockEntry(node)
 	}
+	c.lockMap.UnlockEntry(node)
 
 	if err != nil {
 		if isInstanceNotFoundError(err) {
