@@ -234,7 +234,7 @@ func (mr *MockVMSetMockRecorder) AttachDisk(nodeName, diskMap interface{}) *gomo
 }
 
 // DetachDisk mocks base method
-func (m *MockVMSet) DetachDisk(nodeName types.NodeName, diskMap map[string]*DetachDiskOptions) error {
+func (m *MockVMSet) DetachDisk(nodeName types.NodeName, diskMap map[string]string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DetachDisk", nodeName, diskMap)
 	ret0, _ := ret[0].(error)

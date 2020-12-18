@@ -171,11 +171,8 @@ func TestStandardDetachDisk(t *testing.T) {
 			mockVMsClient.EXPECT().Update(gomock.Any(), testCloud.ResourceGroup, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		}
 
-		options := DetachDiskOptions{
-			diskName: test.diskName,
-		}
-		diskMap := map[string]*DetachDiskOptions{
-			"uri": &options,
+		diskMap := map[string]string{
+			"uri": test.diskName,
 		}
 		err := vmSet.DetachDisk(test.nodeName, diskMap)
 		assert.Equal(t, test.expectedError, err != nil, "TestCase[%d]: %s", i, test.desc)

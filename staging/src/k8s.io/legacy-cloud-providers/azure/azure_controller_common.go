@@ -103,13 +103,6 @@ type AttachDiskOptions struct {
 	cachingMode             compute.CachingTypes
 	diskEncryptionSetID     string
 	writeAcceleratorEnabled bool
-	count                   int32
-}
-
-// DetachDiskOptions detach disk options
-type DetachDiskOptions struct {
-	diskName string
-	count    int32
 }
 
 // getNodeVMSet gets the VMSet interface based on config.VMType and the real virtual machine type.
@@ -234,7 +227,6 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 		}
 		diskMap[disk] = &options
 	}
-	diskMap[disk].count++
 	c.lockMap.UnlockEntry(attachDiskMapKey)
 
 	c.lockMap.LockEntry(node)
@@ -284,16 +276,16 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 
 	klog.V(2).Infof("detach %v from node %q", diskURI, nodeName)
 
-	// get diskMap
-	var diskMap map[string]*DetachDiskOptions
+	// get diskMap per nodeName
+	var diskMap map[string]string
 	node := strings.ToLower(string(nodeName))
 	v, ok := c.detachDiskQueue.Load(node)
 	if ok {
-		if diskMap, ok = v.(map[string]*DetachDiskOptions); !ok {
+		if diskMap, ok = v.(map[string]string); !ok {
 			return fmt.Errorf("convert detachDiskQueue failure on node(%s)", node)
 		}
 	} else {
-		diskMap = make(map[string]*DetachDiskOptions)
+		diskMap = make(map[string]string)
 		c.detachDiskQueue.Store(node, diskMap)
 	}
 
@@ -302,18 +294,14 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	detachDiskMapKey := node + "detachqueue"
 	c.lockMap.LockEntry(detachDiskMapKey)
 	if _, ok := diskMap[disk]; !ok {
-		options := DetachDiskOptions{
-			diskName: diskName,
-		}
-		diskMap[disk] = &options
+		diskMap[disk] = diskName
 	}
-	diskMap[disk].count++
 	c.lockMap.UnlockEntry(detachDiskMapKey)
 
 	c.lockMap.LockEntry(node)
 	c.lockMap.LockEntry(detachDiskMapKey)
 	// copy diskMap from queue for detach disk process
-	diskMapCopy := make(map[string]*DetachDiskOptions)
+	diskMapCopy := make(map[string]string)
 	for uri, opt := range diskMap {
 		diskMapCopy[uri] = opt
 		delete(diskMap, uri)

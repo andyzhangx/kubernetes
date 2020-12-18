@@ -69,7 +69,7 @@ type VMSet interface {
 	// AttachDisk attaches a disk to vm
 	AttachDisk(nodeName types.NodeName, diskMap map[string]*AttachDiskOptions) error
 	// DetachDisk detaches a disk from vm
-	DetachDisk(nodeName types.NodeName, diskMap map[string]*DetachDiskOptions) error
+	DetachDisk(nodeName types.NodeName, diskMap map[string]string) error
 	// GetDataDisks gets a list of data disks attached to the node.
 	GetDataDisks(nodeName types.NodeName, string azcache.AzureCacheReadType) ([]compute.DataDisk, error)
 

@@ -131,7 +131,7 @@ func (as *availabilitySet) AttachDisk(nodeName types.NodeName, diskMap map[strin
 }
 
 // DetachDisk detaches a disk from VM
-func (as *availabilitySet) DetachDisk(nodeName types.NodeName, diskMap map[string]*DetachDiskOptions) error {
+func (as *availabilitySet) DetachDisk(nodeName types.NodeName, diskMap map[string]string) error {
 	vm, err := as.getVirtualMachine(nodeName, azcache.CacheReadTypeDefault)
 	if err != nil {
 		// if host doesn't exist, no need to detach
@@ -150,12 +150,12 @@ func (as *availabilitySet) DetachDisk(nodeName types.NodeName, diskMap map[strin
 
 	bFoundDisk := false
 	for i, disk := range disks {
-		for diskURI, opt := range diskMap {
-			if disk.Lun != nil && (disk.Name != nil && opt.diskName != "" && strings.EqualFold(*disk.Name, opt.diskName)) ||
+		for diskURI, diskName := range diskMap {
+			if disk.Lun != nil && (disk.Name != nil && diskName != "" && strings.EqualFold(*disk.Name, diskName)) ||
 				(disk.Vhd != nil && disk.Vhd.URI != nil && diskURI != "" && strings.EqualFold(*disk.Vhd.URI, diskURI)) ||
 				(disk.ManagedDisk != nil && diskURI != "" && strings.EqualFold(*disk.ManagedDisk.ID, diskURI)) {
 				// found the disk
-				klog.V(2).Infof("azureDisk - detach disk: name %q uri %q", opt.diskName, diskURI)
+				klog.V(2).Infof("azureDisk - detach disk: name %q uri %q", diskName, diskURI)
 				if strings.EqualFold(as.cloud.Environment.Name, AzureStackCloudName) {
 					disks = append(disks[:i], disks[i+1:]...)
 				} else {

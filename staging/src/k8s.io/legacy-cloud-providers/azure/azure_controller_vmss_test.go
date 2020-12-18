@@ -237,11 +237,8 @@ func TestDetachDiskWithVMSS(t *testing.T) {
 			mockVMSSVMClient.EXPECT().Update(gomock.Any(), testCloud.ResourceGroup, scaleSetName, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		}
 
-		options := DetachDiskOptions{
+		diskMap := map[string]string{
 			diskName: *test.existedDisk.Name,
-		}
-		diskMap := map[string]*DetachDiskOptions{
-			diskName: &options,
 		}
 		err = ss.DetachDisk(test.vmssvmName, diskMap)
 		assert.Equal(t, test.expectedErr, err != nil, "TestCase[%d]: %s, err: %v", i, test.desc, err)
