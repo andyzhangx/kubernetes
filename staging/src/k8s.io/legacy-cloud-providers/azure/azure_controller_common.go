@@ -48,15 +48,17 @@ const (
 	// https://docs.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-caching
 	diskCachingLimit = 4096 // GiB
 
-	maxLUN               = 64 // max number of LUNs per VM
-	errLeaseFailed       = "AcquireDiskLeaseFailed"
-	errLeaseIDMissing    = "LeaseIdMissing"
-	errContainerNotFound = "ContainerNotFound"
-	errStatusCode400     = "statuscode=400"
-	errInvalidParameter  = `code="invalidparameter"`
-	errTargetInstanceIds = `target="instanceids"`
-	sourceSnapshot       = "snapshot"
-	sourceVolume         = "volume"
+	maxLUN                 = 64 // max number of LUNs per VM
+	errLeaseFailed         = "AcquireDiskLeaseFailed"
+	errLeaseIDMissing      = "LeaseIdMissing"
+	errContainerNotFound   = "ContainerNotFound"
+	errStatusCode400       = "statuscode=400"
+	errInvalidParameter    = `code="invalidparameter"`
+	errTargetInstanceIds   = `target="instanceids"`
+	sourceSnapshot         = "snapshot"
+	sourceVolume           = "volume"
+	attachDiskMapKeySuffix = "attachdiskmap"
+	detachDiskMapKeySuffix = "detachdiskmap"
 
 	// WriteAcceleratorEnabled support for Azure Write Accelerator on Azure Disks
 	// https://docs.microsoft.com/azure/virtual-machines/windows/how-to-enable-write-accelerator
@@ -199,60 +201,87 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 		return -1, fmt.Errorf("failed to get azure instance id for node %q (%v)", nodeName, err)
 	}
 
-	// get diskMap
-	var diskMap map[string]*AttachDiskOptions
+	options := AttachDiskOptions{
+		lun:                     -1,
+		isManagedDisk:           isManagedDisk,
+		diskName:                diskName,
+		cachingMode:             cachingMode,
+		diskEncryptionSetID:     diskEncryptionSetID,
+		writeAcceleratorEnabled: writeAcceleratorEnabled,
+	}
 	node := strings.ToLower(string(nodeName))
-
-	attachDiskMapKey := node + "attachqueue"
-	c.lockMap.LockEntry(attachDiskMapKey)
-	v, ok := c.attachDiskMap.Load(node)
-	if ok {
-		if diskMap, ok = v.(map[string]*AttachDiskOptions); !ok {
-			return -1, fmt.Errorf("convert attachDiskMap failure on node(%s)", node)
-		}
-	} else {
-		diskMap = make(map[string]*AttachDiskOptions)
-		c.attachDiskMap.Store(node, diskMap)
-	}
-	// insert attach disk request to queue
 	disk := strings.ToLower(string(diskURI))
-	if _, ok := diskMap[disk]; !ok {
-		options := AttachDiskOptions{
-			lun:                     -1,
-			isManagedDisk:           isManagedDisk,
-			diskName:                diskName,
-			cachingMode:             cachingMode,
-			diskEncryptionSetID:     diskEncryptionSetID,
-			writeAcceleratorEnabled: writeAcceleratorEnabled,
-		}
-		diskMap[disk] = &options
+	if err := c.insertAttachDiskRequest(disk, node, &options); err != nil {
+		return -1, err
 	}
-	c.lockMap.UnlockEntry(attachDiskMapKey)
 
 	c.lockMap.LockEntry(node)
 	defer c.lockMap.UnlockEntry(node)
-	c.lockMap.LockEntry(attachDiskMapKey)
-	// copy diskMap from queue for attach disk process
-	diskMapCopy := make(map[string]*AttachDiskOptions)
-	for uri, opt := range diskMap {
-		diskMapCopy[uri] = opt
-		delete(diskMap, uri)
+	diskMap, err := c.getAttachDiskRequest(node)
+	if err != nil {
+		return -1, err
 	}
-	c.lockMap.UnlockEntry(attachDiskMapKey)
 
-	lun, err := c.SetDiskLun(nodeName, disk, diskMapCopy)
+	lun, err := c.SetDiskLun(nodeName, disk, diskMap)
 	if err != nil {
 		klog.Warningf("no LUN available for instance %q (%v)", nodeName, err)
 		return -1, fmt.Errorf("all LUNs are used, cannot attach volume (%s, %s) to instance %q (%v)", diskName, diskURI, instanceid, err)
 	}
 
-	klog.V(2).Infof("Trying to attach volume %q lun %d to node %q, diskMap: %s", diskURI, lun, nodeName, diskMapCopy)
-	if len(diskMapCopy) == 0 {
+	klog.V(2).Infof("Trying to attach volume %q lun %d to node %q, diskMap: %s", diskURI, lun, nodeName, diskMap)
+	if len(diskMap) == 0 {
 		return lun, nil
 	}
 	c.diskStateMap.Store(disk, "attaching")
 	defer c.diskStateMap.Delete(disk)
-	return lun, vmset.AttachDisk(nodeName, diskMapCopy)
+	return lun, vmset.AttachDisk(nodeName, diskMap)
+}
+
+func (c *controllerCommon) insertAttachDiskRequest(diskURI, nodeName string, options *AttachDiskOptions) error {
+	var diskMap map[string]*AttachDiskOptions
+	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
+	c.lockMap.LockEntry(attachDiskMapKey)
+	defer c.lockMap.UnlockEntry(attachDiskMapKey)
+	v, ok := c.attachDiskMap.Load(nodeName)
+	if ok {
+		if diskMap, ok = v.(map[string]*AttachDiskOptions); !ok {
+			return fmt.Errorf("convert attachDiskMap failure on node(%s)", nodeName)
+		}
+	} else {
+		diskMap = make(map[string]*AttachDiskOptions)
+		c.attachDiskMap.Store(nodeName, diskMap)
+	}
+	// insert attach disk request to queue
+	_, ok = diskMap[diskURI]
+	if ok {
+		klog.V(2).Infof("azureDisk - duplicated attach disk(%s) request on node(%s)", diskURI, nodeName)
+	} else {
+		diskMap[diskURI] = options
+	}
+	return nil
+}
+
+func (c *controllerCommon) getAttachDiskRequest(nodeName string) (map[string]*AttachDiskOptions, error) {
+	var diskMap, diskMapCopy map[string]*AttachDiskOptions
+
+	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
+	c.lockMap.LockEntry(attachDiskMapKey)
+	defer c.lockMap.UnlockEntry(attachDiskMapKey)
+	v, ok := c.attachDiskMap.Load(nodeName)
+	if !ok {
+		return diskMapCopy, nil
+	}
+	if diskMap, ok = v.(map[string]*AttachDiskOptions); !ok {
+		return diskMapCopy, fmt.Errorf("convert attachDiskMap failure on node(%s)", nodeName)
+	}
+
+	diskMapCopy = make(map[string]*AttachDiskOptions)
+	for uri, opt := range diskMap {
+		diskMapCopy[uri] = opt
+		// clean up original requests in disk map
+		delete(diskMap, uri)
+	}
+	return diskMapCopy, nil
 }
 
 // DetachDisk detaches a disk from VM
@@ -274,44 +303,22 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 		return err
 	}
 
-	klog.V(2).Infof("detach %v from node %q", diskURI, nodeName)
-
-	// get diskMap per nodeName
-	var diskMap map[string]string
 	node := strings.ToLower(string(nodeName))
-	detachDiskMapKey := node + "detachqueue"
-	c.lockMap.LockEntry(detachDiskMapKey)
-	v, ok := c.detachDiskMap.Load(node)
-	if ok {
-		if diskMap, ok = v.(map[string]string); !ok {
-			return fmt.Errorf("convert detachDiskMap failure on node(%s)", node)
-		}
-	} else {
-		diskMap = make(map[string]string)
-		c.detachDiskMap.Store(node, diskMap)
-	}
-
-	// insert detach disk request to queue
 	disk := strings.ToLower(string(diskURI))
-	if _, ok := diskMap[disk]; !ok {
-		diskMap[disk] = diskName
+	if err := c.insertDetachDiskRequest(diskName, disk, node); err != nil {
+		return err
 	}
-	c.lockMap.UnlockEntry(detachDiskMapKey)
 
 	c.lockMap.LockEntry(node)
-	c.lockMap.LockEntry(detachDiskMapKey)
-	// copy diskMap from queue for detach disk process
-	diskMapCopy := make(map[string]string)
-	for uri, opt := range diskMap {
-		diskMapCopy[uri] = opt
-		delete(diskMap, uri)
+	diskMap, err := c.getDetachDiskRequest(node)
+	if err != nil {
+		return err
 	}
-	c.lockMap.UnlockEntry(detachDiskMapKey)
 
-	klog.V(2).Infof("Trying to detach volume %q from node %q, diskMap: %s", diskURI, nodeName, diskMapCopy)
-	if len(diskMapCopy) > 0 {
+	klog.V(2).Infof("Trying to detach volume %q from node %q, diskMap: %s", diskURI, nodeName, diskMap)
+	if len(diskMap) > 0 {
 		c.diskStateMap.Store(disk, "detaching")
-		err = vmset.DetachDisk(nodeName, diskMapCopy)
+		err = vmset.DetachDisk(nodeName, diskMap)
 		c.diskStateMap.Delete(disk)
 	}
 	c.lockMap.UnlockEntry(node)
@@ -328,7 +335,7 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 			retryErr := kwait.ExponentialBackoff(c.cloud.RequestBackoff(), func() (bool, error) {
 				c.lockMap.LockEntry(node)
 				c.diskStateMap.Store(disk, "detaching")
-				err := vmset.DetachDisk(nodeName, diskMapCopy)
+				err := vmset.DetachDisk(nodeName, diskMap)
 				c.diskStateMap.Delete(disk)
 				c.lockMap.UnlockEntry(node)
 
@@ -351,6 +358,53 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 
 	klog.V(2).Infof("azureDisk - detach disk(%s, %s) succeeded", diskName, diskURI)
 	return nil
+}
+
+func (c *controllerCommon) insertDetachDiskRequest(diskName, diskURI, nodeName string) error {
+	var diskMap map[string]string
+	detachDiskMapKey := nodeName + detachDiskMapKeySuffix
+	c.lockMap.LockEntry(detachDiskMapKey)
+	defer c.lockMap.UnlockEntry(detachDiskMapKey)
+	v, ok := c.detachDiskMap.Load(nodeName)
+	if ok {
+		if diskMap, ok = v.(map[string]string); !ok {
+			return fmt.Errorf("convert detachDiskMap failure on node(%s)", nodeName)
+		}
+	} else {
+		diskMap = make(map[string]string)
+		c.detachDiskMap.Store(nodeName, diskMap)
+	}
+	// insert detach disk request to queue
+	_, ok = diskMap[diskURI]
+	if ok {
+		klog.V(2).Infof("azureDisk - duplicated detach disk(%s) request on node(%s)", diskURI, nodeName)
+	} else {
+		diskMap[diskURI] = diskName
+	}
+	return nil
+}
+
+func (c *controllerCommon) getDetachDiskRequest(nodeName string) (map[string]string, error) {
+	var diskMap, diskMapCopy map[string]string
+
+	detachDiskMapKey := nodeName + detachDiskMapKeySuffix
+	c.lockMap.LockEntry(detachDiskMapKey)
+	defer c.lockMap.UnlockEntry(detachDiskMapKey)
+	v, ok := c.detachDiskMap.Load(nodeName)
+	if !ok {
+		return diskMapCopy, nil
+	}
+	if diskMap, ok = v.(map[string]string); !ok {
+		return diskMapCopy, fmt.Errorf("convert detachDiskMap failure on node(%s)", nodeName)
+	}
+
+	diskMapCopy = make(map[string]string)
+	for uri, opt := range diskMap {
+		diskMapCopy[uri] = opt
+		// clean up original requests in disk map
+		delete(diskMap, uri)
+	}
+	return diskMapCopy, nil
 }
 
 // getNodeDataDisks invokes vmSet interfaces to get data disks for the node.
