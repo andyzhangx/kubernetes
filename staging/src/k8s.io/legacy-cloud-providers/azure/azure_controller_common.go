@@ -91,8 +91,8 @@ type controllerCommon struct {
 	cloud                 *Cloud
 	// disk queue that is waiting for attach or detach on specific node
 	// <nodeName, map<diskURI, *AttachDiskOptions/DetachDiskOptions>>
-	attachDiskQueue sync.Map
-	detachDiskQueue sync.Map
+	attachDiskMap sync.Map
+	detachDiskMap sync.Map
 }
 
 // AttachDiskOptions attach disk options
@@ -202,20 +202,20 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 	// get diskMap
 	var diskMap map[string]*AttachDiskOptions
 	node := strings.ToLower(string(nodeName))
-	v, ok := c.attachDiskQueue.Load(node)
+
+	attachDiskMapKey := node + "attachqueue"
+	c.lockMap.LockEntry(attachDiskMapKey)
+	v, ok := c.attachDiskMap.Load(node)
 	if ok {
 		if diskMap, ok = v.(map[string]*AttachDiskOptions); !ok {
-			return -1, fmt.Errorf("convert attachDiskQueue failure on node(%s)", node)
+			return -1, fmt.Errorf("convert attachDiskMap failure on node(%s)", node)
 		}
 	} else {
 		diskMap = make(map[string]*AttachDiskOptions)
-		c.attachDiskQueue.Store(node, diskMap)
+		c.attachDiskMap.Store(node, diskMap)
 	}
-
 	// insert attach disk request to queue
 	disk := strings.ToLower(string(diskURI))
-	attachDiskMapKey := node + "attachqueue"
-	c.lockMap.LockEntry(attachDiskMapKey)
 	if _, ok := diskMap[disk]; !ok {
 		options := AttachDiskOptions{
 			lun:                     -1,
@@ -279,20 +279,20 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	// get diskMap per nodeName
 	var diskMap map[string]string
 	node := strings.ToLower(string(nodeName))
-	v, ok := c.detachDiskQueue.Load(node)
+	detachDiskMapKey := node + "detachqueue"
+	c.lockMap.LockEntry(detachDiskMapKey)
+	v, ok := c.detachDiskMap.Load(node)
 	if ok {
 		if diskMap, ok = v.(map[string]string); !ok {
-			return fmt.Errorf("convert detachDiskQueue failure on node(%s)", node)
+			return fmt.Errorf("convert detachDiskMap failure on node(%s)", node)
 		}
 	} else {
 		diskMap = make(map[string]string)
-		c.detachDiskQueue.Store(node, diskMap)
+		c.detachDiskMap.Store(node, diskMap)
 	}
 
 	// insert detach disk request to queue
 	disk := strings.ToLower(string(diskURI))
-	detachDiskMapKey := node + "detachqueue"
-	c.lockMap.LockEntry(detachDiskMapKey)
 	if _, ok := diskMap[disk]; !ok {
 		diskMap[disk] = diskName
 	}
@@ -411,7 +411,7 @@ func (c *controllerCommon) GetNextDiskLun(nodeName types.NodeName) (int32, error
 	return -1, fmt.Errorf("all luns are used")
 }
 
-// SetDiskLun find unused luns and set luns for diskMap.
+// SetDiskLun find unused luns and allocate lun for every disk in diskMap.
 // Return lun of diskURI, -1 if all luns are used.
 func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, diskMap map[string]*AttachDiskOptions) (int32, error) {
 	disks, err := c.getNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
@@ -421,12 +421,12 @@ func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, d
 	}
 
 	lun := int32(-1)
-	_, isDiskInQueue := diskMap[diskURI]
+	_, isDiskInMap := diskMap[diskURI]
 	used := make([]bool, maxLUN)
 	for _, disk := range disks {
 		if disk.Lun != nil {
 			used[*disk.Lun] = true
-			if !isDiskInQueue {
+			if !isDiskInMap {
 				// find lun of diskURI since diskURI is not in diskMap
 				if disk.ManagedDisk != nil && strings.EqualFold(*disk.ManagedDisk.ID, diskURI) {
 					lun = *disk.Lun
@@ -434,7 +434,7 @@ func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, d
 			}
 		}
 	}
-	if !isDiskInQueue && lun < 0 {
+	if !isDiskInMap && lun < 0 {
 		return -1, fmt.Errorf("could not find disk(%s) in current disk list(%v) nor in diskMap(%v)", diskURI, disks, diskMap)
 	}
 	if len(diskMap) == 0 {
