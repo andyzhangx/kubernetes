@@ -489,12 +489,14 @@ func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, d
 		}
 	}
 	if !isDiskInMap && lun < 0 {
-		return -1, fmt.Errorf("could not find disk(%s) in current disk list(%v) nor in diskMap(%v)", diskURI, disks, diskMap)
+		return -1, fmt.Errorf("could not find disk(%s) in current disk list(len: %d) nor in diskMap(%v)", diskURI, len(disks), diskMap)
 	}
 	if len(diskMap) == 0 {
+		// attach disk request is empty, return directly
 		return lun, nil
 	}
 
+	// allocate lun for every disk in diskMap
 	var diskLuns []int32
 	count := 0
 	for k, v := range used {
@@ -524,7 +526,7 @@ func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, d
 		count++
 	}
 	if lun < 0 {
-		return lun, fmt.Errorf("could not find lun of diskURI(%s)", diskURI)
+		return lun, fmt.Errorf("could not find lun of diskURI(%s), diskMap(%v)", diskURI, diskMap)
 	}
 	return lun, nil
 }
