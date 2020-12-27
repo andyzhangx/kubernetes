@@ -217,7 +217,7 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 
 	c.lockMap.LockEntry(node)
 	defer c.lockMap.UnlockEntry(node)
-	diskMap, err := c.getAttachDiskRequest(node)
+	diskMap, err := c.cleanupAttachDiskRequests(node)
 	if err != nil {
 		return -1, err
 	}
@@ -261,27 +261,23 @@ func (c *controllerCommon) insertAttachDiskRequest(diskURI, nodeName string, opt
 	return nil
 }
 
-func (c *controllerCommon) getAttachDiskRequest(nodeName string) (map[string]*AttachDiskOptions, error) {
-	var diskMap, diskMapCopy map[string]*AttachDiskOptions
+// clean up attach disk requests
+// return original attach disk requests
+func (c *controllerCommon) cleanupAttachDiskRequests(nodeName string) (map[string]*AttachDiskOptions, error) {
+	var diskMap map[string]*AttachDiskOptions
 
 	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
 	c.lockMap.LockEntry(attachDiskMapKey)
 	defer c.lockMap.UnlockEntry(attachDiskMapKey)
 	v, ok := c.attachDiskMap.Load(nodeName)
 	if !ok {
-		return diskMapCopy, nil
+		return diskMap, nil
 	}
 	if diskMap, ok = v.(map[string]*AttachDiskOptions); !ok {
-		return diskMapCopy, fmt.Errorf("convert attachDiskMap failure on node(%s)", nodeName)
+		return diskMap, fmt.Errorf("convert attachDiskMap failure on node(%s)", nodeName)
 	}
-
-	diskMapCopy = make(map[string]*AttachDiskOptions)
-	for uri, opt := range diskMap {
-		diskMapCopy[uri] = opt
-		// clean up original requests in disk map
-		delete(diskMap, uri)
-	}
-	return diskMapCopy, nil
+	c.attachDiskMap.Store(nodeName, make(map[string]*AttachDiskOptions))
+	return diskMap, nil
 }
 
 // DetachDisk detaches a disk from VM
@@ -310,7 +306,7 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	}
 
 	c.lockMap.LockEntry(node)
-	diskMap, err := c.getDetachDiskRequest(node)
+	diskMap, err := c.cleanupDetachDiskRequests(node)
 	if err != nil {
 		return err
 	}
@@ -384,27 +380,24 @@ func (c *controllerCommon) insertDetachDiskRequest(diskName, diskURI, nodeName s
 	return nil
 }
 
-func (c *controllerCommon) getDetachDiskRequest(nodeName string) (map[string]string, error) {
-	var diskMap, diskMapCopy map[string]string
+// clean up detach disk requests
+// return original detach disk requests
+func (c *controllerCommon) cleanupDetachDiskRequests(nodeName string) (map[string]string, error) {
+	var diskMap map[string]string
 
 	detachDiskMapKey := nodeName + detachDiskMapKeySuffix
 	c.lockMap.LockEntry(detachDiskMapKey)
 	defer c.lockMap.UnlockEntry(detachDiskMapKey)
 	v, ok := c.detachDiskMap.Load(nodeName)
 	if !ok {
-		return diskMapCopy, nil
+		return diskMap, nil
 	}
 	if diskMap, ok = v.(map[string]string); !ok {
-		return diskMapCopy, fmt.Errorf("convert detachDiskMap failure on node(%s)", nodeName)
+		return diskMap, fmt.Errorf("convert detachDiskMap failure on node(%s)", nodeName)
 	}
-
-	diskMapCopy = make(map[string]string)
-	for uri, opt := range diskMap {
-		diskMapCopy[uri] = opt
-		// clean up original requests in disk map
-		delete(diskMap, uri)
-	}
-	return diskMapCopy, nil
+	// clean up original requests in disk map
+	c.detachDiskMap.Store(nodeName, make(map[string]string))
+	return diskMap, nil
 }
 
 // getNodeDataDisks invokes vmSet interfaces to get data disks for the node.
