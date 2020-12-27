@@ -461,7 +461,7 @@ func (c *controllerCommon) GetNextDiskLun(nodeName types.NodeName) (int32, error
 // SetDiskLun find unused luns and allocate lun for every disk in diskMap.
 // Return lun of diskURI, -1 if all luns are used.
 func (c *controllerCommon) SetDiskLun(nodeName types.NodeName, diskURI string, diskMap map[string]*AttachDiskOptions) (int32, error) {
-	disks, err := c.getNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
+	disks, err := c.getNodeDataDisks(nodeName, azcache.CacheReadTypeForceRefresh)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %q: %v", nodeName, err)
 		return -1, err
