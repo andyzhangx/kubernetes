@@ -217,7 +217,7 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 
 	c.lockMap.LockEntry(node)
 	defer c.lockMap.UnlockEntry(node)
-	diskMap, err := c.cleanupAttachDiskRequests(node)
+	diskMap, err := c.cleanAttachDiskRequests(node)
 	if err != nil {
 		return -1, err
 	}
@@ -263,7 +263,7 @@ func (c *controllerCommon) insertAttachDiskRequest(diskURI, nodeName string, opt
 
 // clean up attach disk requests
 // return original attach disk requests
-func (c *controllerCommon) cleanupAttachDiskRequests(nodeName string) (map[string]*AttachDiskOptions, error) {
+func (c *controllerCommon) cleanAttachDiskRequests(nodeName string) (map[string]*AttachDiskOptions, error) {
 	var diskMap map[string]*AttachDiskOptions
 
 	attachDiskMapKey := nodeName + attachDiskMapKeySuffix
@@ -306,7 +306,7 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	}
 
 	c.lockMap.LockEntry(node)
-	diskMap, err := c.cleanupDetachDiskRequests(node)
+	diskMap, err := c.cleanDetachDiskRequests(node)
 	if err != nil {
 		return err
 	}
@@ -382,7 +382,7 @@ func (c *controllerCommon) insertDetachDiskRequest(diskName, diskURI, nodeName s
 
 // clean up detach disk requests
 // return original detach disk requests
-func (c *controllerCommon) cleanupDetachDiskRequests(nodeName string) (map[string]string, error) {
+func (c *controllerCommon) cleanDetachDiskRequests(nodeName string) (map[string]string, error) {
 	var diskMap map[string]string
 
 	detachDiskMapKey := nodeName + detachDiskMapKeySuffix
@@ -434,28 +434,6 @@ func (c *controllerCommon) GetDiskLun(diskName, diskURI string, nodeName types.N
 		}
 	}
 	return -1, fmt.Errorf("cannot find Lun for disk %s", diskName)
-}
-
-// GetNextDiskLun searches all vhd attachment on the host and find unused lun. Return -1 if all luns are used.
-func (c *controllerCommon) GetNextDiskLun(nodeName types.NodeName) (int32, error) {
-	disks, err := c.getNodeDataDisks(nodeName, azcache.CacheReadTypeDefault)
-	if err != nil {
-		klog.Errorf("error of getting data disks for node %q: %v", nodeName, err)
-		return -1, err
-	}
-
-	used := make([]bool, maxLUN)
-	for _, disk := range disks {
-		if disk.Lun != nil {
-			used[*disk.Lun] = true
-		}
-	}
-	for k, v := range used {
-		if !v {
-			return int32(k), nil
-		}
-	}
-	return -1, fmt.Errorf("all luns are used")
 }
 
 // SetDiskLun find unused luns and allocate lun for every disk in diskMap.
