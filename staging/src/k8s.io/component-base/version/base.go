@@ -39,8 +39,8 @@ var (
 	// them irrelevant. (Next we'll take it out, which may muck with
 	// scripts consuming the kubectl version output - but most of
 	// these should be looking at gitVersion already anyways.)
-	gitMajor string // major version, always numeric
-	gitMinor string // minor version, numeric possibly followed by "+"
+        gitMajor string = "1" // major version, always numeric
+        gitMinor string = "19" // minor version, numeric possibly followed by "+"
 
 	// semantic version, derived by build scripts (see
 	// https://github.com/kubernetes/community/blob/master/contributors/design-proposals/release/versioning.md
@@ -55,7 +55,7 @@ var (
 	// NOTE: The $Format strings are replaced during 'git archive' thanks to the
 	// companion .gitattributes file containing 'export-subst' in this same
 	// directory.  See also https://git-scm.com/docs/gitattributes
-	gitVersion   = "v0.0.0-master+$Format:%h$"
+	gitVersion   = "v1.19.1"
 	gitCommit    = "$Format:%H$" // sha1 from git, output of $(git rev-parse HEAD)
 	gitTreeState = ""            // state of git tree, either "clean" or "dirty"
 
