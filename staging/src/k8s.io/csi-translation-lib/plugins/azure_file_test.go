@@ -134,14 +134,14 @@ func TestTranslateAzureFileInTreeStorageClassToCSI(t *testing.T) {
 				Spec: corev1.PersistentVolumeSpec{
 					PersistentVolumeSource: corev1.PersistentVolumeSource{
 						CSI: &corev1.CSIPersistentVolumeSource{
-							Driver: "file.csi.azure.com",
-							NodeStageSecretRef: &corev1.SecretReference{
-								Name:      "secretname",
-								Namespace: "default",
+							Driver:   "file.csi.azure.com",
+							ReadOnly: true,
+							VolumeAttributes: map[string]string{
+								azureFileShareName:   "sharename",
+								secretNameField:      "secretname",
+								secretNamespaceField: "default",
 							},
-							ReadOnly:         true,
-							VolumeAttributes: map[string]string{azureFileShareName: "sharename"},
-							VolumeHandle:     "#secretname#sharename#",
+							VolumeHandle: "#secretname#sharename#",
 						},
 					},
 					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
@@ -151,18 +151,17 @@ func TestTranslateAzureFileInTreeStorageClassToCSI(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		t.Logf("Testing %v", tc.name)
 		got, err := translator.TranslateInTreeInlineVolumeToCSI(tc.volume)
 		if err != nil && !tc.expErr {
-			t.Errorf("Did not expect error but got: %v", err)
+			t.Errorf("test[%s] Did not expect error but got: %v", tc.name, err)
 		}
 
 		if err == nil && tc.expErr {
-			t.Errorf("Expected error, but did not get one.")
+			t.Errorf("test[%s] Expected error, but did not get one.", tc.name)
 		}
 
 		if !reflect.DeepEqual(got, tc.expVol) {
-			t.Errorf("Got parameters: %v, expected :%v", got, tc.expVol)
+			t.Errorf("test[%s] Got parameters: %v, expected :%v", tc.name, got, tc.expVol)
 		}
 	}
 }
@@ -213,12 +212,12 @@ func TestTranslateAzureFileInTreePVToCSI(t *testing.T) {
 						CSI: &corev1.CSIPersistentVolumeSource{
 							Driver:   "file.csi.azure.com",
 							ReadOnly: true,
-							NodeStageSecretRef: &corev1.SecretReference{
-								Name:      "secretname",
-								Namespace: secretNamespace,
+							VolumeAttributes: map[string]string{
+								azureFileShareName:   "sharename",
+								secretNameField:      "secretname",
+								secretNamespaceField: secretNamespace,
 							},
-							VolumeAttributes: map[string]string{azureFileShareName: "sharename"},
-							VolumeHandle:     "#secretname#sharename#",
+							VolumeHandle: "#secretname#sharename#",
 						},
 					},
 				},
@@ -252,12 +251,12 @@ func TestTranslateAzureFileInTreePVToCSI(t *testing.T) {
 						CSI: &corev1.CSIPersistentVolumeSource{
 							Driver:   "file.csi.azure.com",
 							ReadOnly: true,
-							NodeStageSecretRef: &corev1.SecretReference{
-								Name:      "secretname",
-								Namespace: secretNamespace,
+							VolumeAttributes: map[string]string{
+								azureFileShareName:   "sharename",
+								secretNameField:      "secretname",
+								secretNamespaceField: secretNamespace,
 							},
-							VolumeAttributes: map[string]string{azureFileShareName: "sharename"},
-							VolumeHandle:     "rg#secretname#sharename#",
+							VolumeHandle: "rg#secretname#sharename#",
 						},
 					},
 				},
@@ -266,18 +265,17 @@ func TestTranslateAzureFileInTreePVToCSI(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		t.Logf("Testing %v", tc.name)
 		got, err := translator.TranslateInTreePVToCSI(tc.volume)
 		if err != nil && !tc.expErr {
-			t.Errorf("Did not expect error but got: %v", err)
+			t.Errorf("test[%s] Did not expect error but got: %v", tc.name, err)
 		}
 
 		if err == nil && tc.expErr {
-			t.Errorf("Expected error, but did not get one.")
+			t.Errorf("test[%s] Expected error, but did not get one.", tc.name)
 		}
 
 		if !reflect.DeepEqual(got, tc.expVol) {
-			t.Errorf("Got parameters: %v, expected :%v", got, tc.expVol)
+			t.Errorf("test[%s] Got parameters: %v, expected :%v", tc.name, got, tc.expVol)
 		}
 	}
 }
@@ -352,9 +350,8 @@ func TestTranslateCSIPVToInTree(t *testing.T) {
 				Spec: corev1.PersistentVolumeSpec{
 					PersistentVolumeSource: corev1.PersistentVolumeSource{
 						CSI: &corev1.CSIPersistentVolumeSource{
-							VolumeHandle:     "rg#st#pvc-file-dynamic#diskname.vhd",
-							ReadOnly:         true,
-							VolumeAttributes: mp,
+							VolumeHandle: "rg#st#pvc-file-dynamic#diskname.vhd",
+							ReadOnly:     true,
 						},
 					},
 				},
@@ -379,18 +376,17 @@ func TestTranslateCSIPVToInTree(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		t.Logf("Testing %v", tc.name)
 		got, err := translator.TranslateCSIPVToInTree(tc.volume)
 		if err != nil && !tc.expErr {
-			t.Errorf("Did not expect error but got: %v", err)
+			t.Errorf("test[%s] Did not expect error but got: %v", tc.name, err)
 		}
 
 		if err == nil && tc.expErr {
-			t.Errorf("Expected error, but did not get one.")
+			t.Errorf("test[%s] Expected error, but did not get one.", tc.name)
 		}
 
 		if !reflect.DeepEqual(got, tc.expVol) {
-			t.Errorf("Got parameters: %v, expected :%v", got, tc.expVol)
+			t.Errorf("test[%s] Got parameters: %v, expected :%v", tc.name, got, tc.expVol)
 		}
 	}
 
