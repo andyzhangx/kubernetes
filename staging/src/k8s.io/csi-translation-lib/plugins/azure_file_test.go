@@ -140,7 +140,7 @@ func TestTranslateAzureFileInTreeStorageClassToCSI(t *testing.T) {
 								Namespace: "default",
 							},
 							ReadOnly:         true,
-							VolumeAttributes: map[string]string{azureFileShareName: "sharename"},
+							VolumeAttributes: map[string]string{shareNameField: "sharename"},
 							VolumeHandle:     "#secretname#sharename#",
 						},
 					},
@@ -217,7 +217,7 @@ func TestTranslateAzureFileInTreePVToCSI(t *testing.T) {
 								Name:      "secretname",
 								Namespace: secretNamespace,
 							},
-							VolumeAttributes: map[string]string{azureFileShareName: "sharename"},
+							VolumeAttributes: map[string]string{shareNameField: "sharename"},
 							VolumeHandle:     "#secretname#sharename#",
 						},
 					},
@@ -256,7 +256,7 @@ func TestTranslateAzureFileInTreePVToCSI(t *testing.T) {
 								Name:      "secretname",
 								Namespace: secretNamespace,
 							},
-							VolumeAttributes: map[string]string{azureFileShareName: "sharename"},
+							VolumeAttributes: map[string]string{shareNameField: "sharename"},
 							VolumeHandle:     "rg#secretname#sharename#",
 						},
 					},
@@ -286,6 +286,7 @@ func TestTranslateCSIPVToInTree(t *testing.T) {
 	translator := NewAzureFileCSITranslator()
 
 	secretNamespace := "secretnamespace"
+	defaultNS := "default"
 	mp := make(map[string]string)
 	mp["shareName"] = "unit-test"
 	cases := []struct {
@@ -367,9 +368,10 @@ func TestTranslateCSIPVToInTree(t *testing.T) {
 				Spec: corev1.PersistentVolumeSpec{
 					PersistentVolumeSource: corev1.PersistentVolumeSource{
 						AzureFile: &corev1.AzureFilePersistentVolumeSource{
-							SecretName: "azure-storage-account-st-secret",
-							ShareName:  "pvc-file-dynamic",
-							ReadOnly:   true,
+							SecretName:      "azure-storage-account-st-secret",
+							ShareName:       "unit-test",
+							SecretNamespace: &defaultNS,
+							ReadOnly:        true,
 						},
 					},
 				},
