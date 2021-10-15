@@ -21,9 +21,9 @@
 # checks them out to a branch named:
 #  automated-cherry-pick-of-<pr>-<target branch>-<timestamp>
 
-set -o errexit
-set -o nounset
-set -o pipefail
+#set -o errexit
+#set -o nounset
+#set -o pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 declare -r REPO_ROOT
