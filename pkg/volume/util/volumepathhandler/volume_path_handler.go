@@ -249,6 +249,10 @@ func (v VolumePathHandler) IsSymlinkExist(mapPath string) (bool, error) {
 	if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
 		return true, nil
 	}
+	// go1.23 behavior change: https://github.com/golang/go/issues/63703#issuecomment-2535941458
+	if (runtime.GOOS == "windows") && (dir.Mode()&os.ModeIrregular != 0) {
+		return true, nil
+	}
 	// If file exits but it's not symbolic link, return false and no error
 	return false, nil
 }
